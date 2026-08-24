@@ -1,0 +1,21 @@
+:root {
+  --pm-primary: #426A8A;
+  --pm-primary-dark: #304F6A;
+
+  --pm-accent: #D6A94A;
+  --pm-accent-soft: #F7F0D9;
+
+  --pm-bg: #F6F7F9;
+  --pm-card: #FFFFFF;
+
+  --pm-text: #293743;
+  --pm-muted: #71808B;
+
+  --pm-border: #DEE4E8;
+  --pm-soft: #F0F3F5;
+
+  --pm-paused: #9AA1A6;
+  --pm-note: #D6A94A;
+  --pm-success: #6D9A7C;
+  --pm-danger: #C96F6F;
+}

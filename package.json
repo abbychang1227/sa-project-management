@@ -1,0 +1,18 @@
+{
+  "name": "project-management-vue-structured",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "vite": "^6.3.5",
+    "vue": "^3.5.13",
+    "xlsx-js-style": "^1.2.0"
+  },
+  "devDependencies": {}
+}

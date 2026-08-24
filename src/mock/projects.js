@@ -1,0 +1,62 @@
+export const projects = [
+  {
+    id: 1,
+    name: 'iFIX 監控系統',
+    customer: '元太科技',
+    sa: 'Amy',
+    developer: 'John',
+    endDate: '2026/09/30',
+    status: '進行中',
+    statusType: 'normal',
+    progress: 65,
+    lastWeek: '完成 API 串接測試、設備資料確認',
+    thisWeek: '進行 UI 調整與系統整合測試',
+    todo: '確認客戶測試資料',
+    notes: '目前無重大備註'
+  },
+  {
+    id: 2,
+    name: '藥劑部查核系統',
+    customer: '中國醫藥大學附設醫院',
+    sa: 'Amy',
+    developer: 'David',
+    endDate: '2026/10/15',
+    status: '暫緩',
+    statusType: 'paused',
+    progress: 42,
+    lastWeek: '完成查核項目確認',
+    thisWeek: '等待 MIS API 文件確認',
+    todo: '等待 MIS API 文件',
+    notes: 'API 文件尚未確認'
+  },
+  {
+    id: 3,
+    name: '司機作業系統',
+    customer: '聯華',
+    sa: 'John',
+    developer: 'Leo',
+    endDate: '2026/09/10',
+    status: '暫緩',
+    statusType: 'paused',
+    progress: 55,
+    lastWeek: '完成出貨流程確認',
+    thisWeek: '確認簽收與列印需求',
+    todo: '確認客戶簽收需求',
+    notes: '部分需求尚待客戶確認'
+  },
+  {
+    id: 4,
+    name: '企業入口網站',
+    customer: '範例科技股份有限公司',
+    sa: 'Amy',
+    developer: 'Leo',
+    endDate: '2026/09/20',
+    status: '進行中',
+    statusType: 'normal',
+    progress: 80,
+    lastWeek: '完成網站素材整理',
+    thisWeek: '進行首頁與品牌頁面製作',
+    todo: '確認最終圖片素材',
+    notes: '目前無重大備註'
+  }
+]
