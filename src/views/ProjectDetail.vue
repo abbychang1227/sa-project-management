@@ -24,6 +24,7 @@ const emit = defineEmits([
 
   'add-weekly',
   'edit-weekly',
+  'delete-weekly',
 
   'add-link',
   'delete-link',
@@ -48,11 +49,26 @@ const linkForm = ref({
 });
 
 const showTemplates = ref(false);
-const selectedTask = ref(null);
+const selectedTemplateId = ref('');
+const selectedTaskId = ref(null);
 
 // ============================================================
 // 甘特項目
 // ============================================================
+
+const selectedTemplate = computed(() => {
+  if (!selectedTemplateId.value) {
+    return null;
+  }
+
+  return (
+    props.templates.find(
+      (template) =>
+        String(template.id) ===
+        String(selectedTemplateId.value)
+    ) || null
+  );
+});
 
 const projectTasks = computed(() => {
   if (!props.project) return [];
@@ -62,6 +78,18 @@ const projectTasks = computed(() => {
   );
 });
 
+
+const selectedTask = computed(() => {
+  if (selectedTaskId.value === null) {
+    return null;
+  }
+
+  return (
+    projectTasks.value.find(
+      (task) => String(task.id) === String(selectedTaskId.value)
+    ) || null
+  );
+});
 // ============================================================
 // 週報排序
 // ============================================================
@@ -107,19 +135,23 @@ function openTask(task = null) {
 
   taskForm.value = task
     ? {
-        name: task.name,
-        start: task.start,
-        end: task.end,
-        progress: task.progress,
-        description: task.description || '',
-      }
+      id: task.id,
+
+      name: task.name,
+      start: task.start,
+      end: task.end,
+      progress: task.progress,
+      description: task.description || '',
+    }
     : {
-        name: '',
-        start: '2026-08-17',
-        end: '2026-09-30',
-        progress: 0,
-        description: '',
-      };
+      id: null,
+
+      name: '',
+      start: '2026-08-17',
+      end: '2026-09-30',
+      progress: 0,
+      description: '',
+    };
 
   taskModal.value = true;
 }
@@ -133,6 +165,22 @@ function saveTask() {
   taskModal.value = false;
 }
 
+
+
+function applySelectedTemplate() {
+  if (!selectedTemplate.value) {
+    alert('請先選擇甘特模板');
+    return;
+  }
+
+  emit(
+    'apply-template',
+    selectedTemplate.value
+  );
+
+  showTemplates.value = false;
+  selectedTemplateId.value = '';
+}
 // ============================================================
 // 日期工具
 // ============================================================
@@ -398,11 +446,11 @@ function saveLink() {
 // ============================================================
 
 function openTaskDetail(task) {
-  selectedTask.value = task;
+  selectedTaskId.value = task?.id ?? null;
 }
 
 function showTaskDetail(task) {
-  selectedTask.value = task;
+  selectedTaskId.value = task?.id ?? null;
 }
 
 defineExpose({
@@ -438,7 +486,7 @@ function workHasTask(work, taskId) {
 </script>
 
 <template>
-  <div class="content">
+  <div v-if="project" class="content">
     <!-- ======================================================
        返回
   ====================================================== -->
@@ -532,13 +580,16 @@ function workHasTask(work, taskId) {
             <div class="weekly-head-actions">
               <em> 已填寫 </em>
 
-              <button
-                type="button"
-                class="edit-weekly-btn"
-                @click="openWeeklyEdit(r)"
-              >
+              <button type="button" class="edit-weekly-btn" @click="openWeeklyEdit(r)">
                 編輯
               </button>
+
+
+              <button type="button" class="delete-weekly-btn" @click="emit('delete-weekly', r)">
+                刪除
+              </button>
+
+
             </div>
           </div>
 
@@ -550,11 +601,8 @@ function workHasTask(work, taskId) {
             <div class="report-section-title">上週實際</div>
 
             <div v-if="getLastWeekWorks(r).length" class="report-works">
-              <div
-                v-for="(work, index) in getLastWeekWorks(r)"
-                :key="work.id || `${r.id}-last-${index}`"
-                class="report-work"
-              >
+              <div v-for="(work, index) in getLastWeekWorks(r)" :key="work.id || `${r.id}-last-${index}`"
+                class="report-work">
                 <div class="work-number">{{ index + 1 }}.</div>
 
                 <div class="report-work-content">
@@ -562,25 +610,21 @@ function workHasTask(work, taskId) {
                     {{ work.description }}
                   </div>
 
-                  <span
-                    v-if="
-                      getTaskName(
-                        work.taskId ||
-                          (Array.isArray(work.taskIds) && work.taskIds.length
-                            ? work.taskIds[0]
-                            : '')
-                      )
-                    "
-                    class="gantt-tag"
-                  >
+                  <span v-if="getTaskName(
+    work.taskId ||
+    (Array.isArray(work.taskIds) && work.taskIds.length
+      ? work.taskIds[0]
+      : '')
+  )
+    " class="gantt-tag">
                     {{
-                      getTaskName(
-                        work.taskId ||
-                          (Array.isArray(work.taskIds) && work.taskIds.length
-                            ? work.taskIds[0]
-                            : '')
-                      )
-                    }}
+    getTaskName(
+      work.taskId ||
+      (Array.isArray(work.taskIds) && work.taskIds.length
+        ? work.taskIds[0]
+        : '')
+    )
+  }}
                   </span>
                 </div>
               </div>
@@ -597,11 +641,8 @@ function workHasTask(work, taskId) {
             <div class="report-section-title">本週預計</div>
 
             <div v-if="getThisWeekWorks(r).length" class="report-works">
-              <div
-                v-for="(work, index) in getThisWeekWorks(r)"
-                :key="work.id || `${r.id}-this-${index}`"
-                class="report-work"
-              >
+              <div v-for="(work, index) in getThisWeekWorks(r)" :key="work.id || `${r.id}-this-${index}`"
+                class="report-work">
                 <div class="work-number">{{ index + 1 }}.</div>
 
                 <div class="report-work-content">
@@ -609,25 +650,21 @@ function workHasTask(work, taskId) {
                     {{ work.description }}
                   </div>
 
-                  <span
-                    v-if="
-                      getTaskName(
-                        work.taskId ||
-                          (Array.isArray(work.taskIds) && work.taskIds.length
-                            ? work.taskIds[0]
-                            : '')
-                      )
-                    "
-                    class="gantt-tag"
-                  >
+                  <span v-if="getTaskName(
+    work.taskId ||
+    (Array.isArray(work.taskIds) && work.taskIds.length
+      ? work.taskIds[0]
+      : '')
+  )
+    " class="gantt-tag">
                     {{
-                      getTaskName(
-                        work.taskId ||
-                          (Array.isArray(work.taskIds) && work.taskIds.length
-                            ? work.taskIds[0]
-                            : '')
-                      )
-                    }}
+    getTaskName(
+      work.taskId ||
+      (Array.isArray(work.taskIds) && work.taskIds.length
+        ? work.taskIds[0]
+        : '')
+    )
+  }}
                   </span>
                 </div>
               </div>
@@ -679,14 +716,31 @@ function workHasTask(work, taskId) {
 
     <div v-else-if="tab === 'gantt'">
       <div class="sub">
-        <div>
-          <h3>專案甘特圖</h3>
+  <div>
+    <h3>專案甘特圖</h3>
+  </div>
 
-          <p>專案大方向；點擊甘特項目可查看詳細資料與關聯週報。</p>
-        </div>
+  <div class="gantt-actions">
+    <button
+      class="secondary"
+      type="button"
+      @click="
+        selectedTemplateId = '';
+        showTemplates = true;
+      "
+    >
+      套用甘特模板
+    </button>
 
-        <button class="primary" @click="openTask()">＋ 新增甘特項目</button>
-      </div>
+    <button
+      class="primary"
+      type="button"
+      @click="openTask()"
+    >
+      ＋新增甘特項目
+    </button>
+  </div>
+</div>
 
       <GanttBoard :tasks="projectTasks" @select="openTaskDetail" />
     </div>
@@ -835,37 +889,120 @@ function workHasTask(work, taskId) {
     <!-- ======================================================
        Modals
   ====================================================== -->
-    <TaskDetailModal
-      :visible="!!selectedTask"
-      :task="selectedTask"
-      :linked-reports="linkedReports"
-      @close="selectedTask = null"
-      @edit="openTask"
-    />
+    <TaskDetailModal :visible="!!selectedTask" :task="selectedTask" :linked-reports="linkedReports"
+      @close="selectedTaskId = null" @edit="openTask" @delete="emit('delete-task', $event)" />
 
-    <TaskFormModal
-      :visible="taskModal"
-      :form="taskForm"
-      :editing="editingTask"
-      @close="taskModal = false"
-      @save="saveTask"
-    />
+    <TaskFormModal :visible="taskModal" :form="taskForm" :editing="editingTask" @close="taskModal = false"
+      @save="saveTask" />
 
-    <WeeklyProgressModal
-      :visible="weeklyModal"
-      :form="weeklyForm"
-      :tasks="projectTasks"
-      @close="weeklyModal = false"
-      @save="saveWeekly"
-    />
+    <WeeklyProgressModal :visible="weeklyModal" :form="weeklyForm" :tasks="projectTasks" @close="weeklyModal = false"
+      @save="saveWeekly" />
 
-    <LinkFormModal
-      :visible="linkModal"
-      :form="linkForm"
-      @close="linkModal = false"
-      @save="saveLink"
-    />
+    <LinkFormModal :visible="linkModal" :form="linkForm" @close="linkModal = false" @save="saveLink" />
   </div>
+
+  <div v-else class="content">
+    <p>正在載入專案資料...</p>
+  </div>
+
+  <!-- ======================================================
+   甘特模板選擇
+====================================================== -->
+
+  <div v-if="showTemplates" class="modal-backdrop" @click.self="showTemplates = false">
+    <div class="template-modal">
+
+      <div class="template-modal-head">
+        <div>
+          <span>甘特模板</span>
+          <h3>套用甘特模板</h3>
+        </div>
+
+        <button type="button" class="close" @click="showTemplates = false">
+          ×
+        </button>
+      </div>
+
+      <div class="template-selector">
+
+        <label for="template-select">
+          選擇模板
+        </label>
+
+        <select id="template-select" v-model="selectedTemplateId">
+          <option value="" disabled>
+            請選擇甘特模板
+          </option>
+
+          <option v-for="template in templates" :key="template.id" :value="String(template.id)">
+            {{ template.name }}
+          </option>
+        </select>
+
+      </div>
+
+      <!-- 選中的模板預覽 -->
+      <div v-if="selectedTemplate" class="template-preview">
+
+        <div class="template-preview-head">
+          <div>
+            <strong>
+              {{ selectedTemplate.name }}
+            </strong>
+
+            <p>
+              {{
+    selectedTemplate.description ||
+    '目前尚未填寫模板說明。'
+  }}
+            </p>
+          </div>
+
+          <span>
+            {{
+      Array.isArray(selectedTemplate.tasks)
+        ? selectedTemplate.tasks.length
+        : 0
+    }}
+            個階段
+          </span>
+        </div>
+
+        <div v-if="Array.isArray(selectedTemplate.tasks) &&
+    selectedTemplate.tasks.length
+    " class="template-task-list">
+          <div v-for="(taskName, index) in selectedTemplate.tasks" :key="`${selectedTemplate.id}-${index}`"
+            class="template-task">
+            <b>{{ index + 1 }}</b>
+            <span>{{ taskName }}</span>
+          </div>
+        </div>
+
+        <p v-else class="muted">
+          此模板目前沒有甘特項目。
+        </p>
+
+      </div>
+
+      <div v-else class="template-empty">
+        請先選擇一個甘特模板。
+      </div>
+
+      <div class="template-modal-actions">
+
+        <button type="button" class="secondary" @click="showTemplates = false">
+          取消
+        </button>
+
+        <button type="button" class="primary" :disabled="!selectedTemplate" @click="applySelectedTemplate">
+          套用此模板
+        </button>
+
+      </div>
+
+    </div>
+  </div>
+
 </template>
 
 <style scoped>
@@ -890,6 +1027,21 @@ function workHasTask(work, taskId) {
   background: var(--pm-soft);
   border-color: var(--pm-primary);
 }
+
+.delete-weekly-btn {
+  border: 1px solid #e7bcbc;
+  border-radius: 7px;
+  padding: 6px 12px;
+  background: #fff;
+  color: #b45e5e;
+  cursor: pointer;
+}
+
+.delete-weekly-btn:hover {
+  background: #fff1f1;
+}
+
+
 .content {
   padding: 30px 34px;
 }
@@ -1009,6 +1161,7 @@ function workHasTask(work, taskId) {
 .add-weekly:hover {
   background: var(--pm-soft);
 }
+
 /* ============================================================
    每週進度
 ============================================================ */
@@ -1047,7 +1200,7 @@ function workHasTask(work, taskId) {
   font-size: 23px;
 }
 
-.weekly-head > div:first-child span {
+.weekly-head>div:first-child span {
   color: var(--pm-muted);
   font-size: 16px;
 }
@@ -1096,7 +1249,7 @@ function workHasTask(work, taskId) {
   font-size: 16px;
 }
 
-.report-section > p {
+.report-section>p {
   margin: 0;
   color: var(--pm-text);
   font-size: 17px;
@@ -1114,6 +1267,7 @@ function workHasTask(work, taskId) {
   align-items: flex-start;
   gap: 10px;
 }
+
 .work-number {
   flex-shrink: 0;
   width: 22px;
@@ -1185,8 +1339,12 @@ function workHasTask(work, taskId) {
   font-size: 17px;
 }
 
-.sub button + button {
-  margin-left: 9px;
+.gantt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .template-box {
@@ -1332,7 +1490,7 @@ function workHasTask(work, taskId) {
 }
 
 .detail-head span,
-.detail-section > span {
+.detail-section>span {
   color: var(--pm-muted);
   font-size: 16px;
 }
@@ -1359,7 +1517,7 @@ function workHasTask(work, taskId) {
   margin: 21px 0;
 }
 
-.detail-grid > div {
+.detail-grid>div {
   background: var(--pm-soft);
   border-radius: 9px;
   padding: 14px;
@@ -1400,7 +1558,7 @@ function workHasTask(work, taskId) {
   padding: 12px 14px;
 }
 
-.linked-report > div {
+.linked-report>div {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -1560,5 +1718,217 @@ function workHasTask(work, taskId) {
 
 .link-actions button.delete:hover {
   background: #fff1f1;
+}
+
+
+/* ============================================================
+   甘特模板選擇
+============================================================ */
+
+/* ============================================================
+   甘特模板選擇視窗
+============================================================ */
+
+.template-modal {
+  width: min(680px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+
+  background: #fff;
+  border-radius: 16px;
+
+  padding: 26px;
+
+  box-shadow: 0 20px 50px rgba(37, 55, 70, 0.18);
+}
+
+.template-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  padding-bottom: 18px;
+
+  border-bottom: 1px solid #edf1f1;
+}
+
+.template-modal-head span {
+  color: var(--pm-muted);
+  font-size: 16px;
+}
+
+.template-modal-head h3 {
+  margin: 6px 0 0;
+
+  color: var(--pm-text);
+
+  font-size: 26px;
+}
+
+.template-selector {
+  margin-top: 20px;
+}
+
+.template-selector label {
+  display: block;
+
+  margin-bottom: 8px;
+
+  color: var(--pm-text);
+
+  font-weight: 700;
+}
+
+.template-selector select {
+  width: 100%;
+
+  padding: 12px 14px;
+
+  border: 1px solid var(--pm-border);
+  border-radius: 9px;
+
+  background: #fff;
+
+  color: var(--pm-text);
+
+  font-size: 16px;
+
+  cursor: pointer;
+}
+
+.template-preview {
+  margin-top: 18px;
+
+  padding: 16px;
+
+  background: var(--pm-soft);
+
+  border: 1px solid var(--pm-border);
+
+  border-radius: 10px;
+}
+
+.template-preview-head {
+  display: flex;
+
+  justify-content: space-between;
+  align-items: flex-start;
+
+  gap: 15px;
+
+  margin-bottom: 14px;
+}
+
+.template-preview-head strong {
+  color: var(--pm-text);
+
+  font-size: 19px;
+}
+
+.template-preview-head p {
+  margin: 5px 0 0;
+
+  color: var(--pm-muted);
+
+  font-size: 15px;
+}
+
+.template-preview-head>span {
+  flex-shrink: 0;
+
+  padding: 5px 9px;
+
+  border-radius: 6px;
+
+  background: #fff;
+
+  color: var(--pm-primary-dark);
+
+  font-size: 14px;
+}
+
+.template-task-list {
+  display: grid;
+
+  gap: 7px;
+}
+
+.template-task {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  padding: 8px 10px;
+
+  background: #fff;
+
+  border: 1px solid var(--pm-border);
+
+  border-radius: 7px;
+}
+
+.template-task b {
+  display: grid;
+
+  place-items: center;
+
+  width: 25px;
+  height: 25px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: var(--pm-primary);
+
+  color: #fff;
+
+  font-size: 13px;
+}
+
+.template-task span {
+  color: var(--pm-text);
+
+  font-size: 15px;
+}
+
+.template-empty {
+  margin-top: 18px;
+
+  padding: 30px 15px;
+
+  text-align: center;
+
+  border: 1px dashed var(--pm-border);
+
+  border-radius: 9px;
+
+  color: var(--pm-muted);
+}
+
+.template-modal-actions {
+  display: flex;
+
+  justify-content: flex-end;
+
+  gap: 10px;
+
+  margin-top: 20px;
+
+  padding-top: 18px;
+
+  border-top: 1px solid #edf1f1;
+}
+
+.template-modal-actions button {
+  min-width: 110px;
+}
+
+.template-modal-actions .primary:disabled {
+  opacity: 0.5;
+
+  cursor: not-allowed;
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { supabase } from '../lib/supabase'
 import ProjectStats from '../components/ProjectStats.vue'
 import ProjectFilters from '../components/ProjectFilters.vue'
 import ProjectTable from '../components/ProjectTable.vue'
@@ -38,12 +39,48 @@ const form = ref({})
 
 
 // ============================================================
+// Supabase 專案資料
+// ============================================================
+
+const dbProjects = ref([])
+
+async function loadProjects() {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .order('id', { ascending: true })
+
+  if (error) {
+    console.error('讀取 projects 失敗:', error)
+    return
+  }
+
+  dbProjects.value = data || []
+
+  console.log(
+    'ProjectOverview 已讀取 Supabase projects:',
+    dbProjects.value
+  )
+}
+
+onMounted(() => {
+  loadProjects()
+})
+
+const projectList = computed(() =>
+  dbProjects.value.length
+    ? dbProjects.value
+    : props.projects
+)
+
+
+// ============================================================
 // 客戶
 // ============================================================
 
 const customers = computed(() => [
   ...new Set(
-    props.projects
+    projectList.value
       .map(p => p.customer)
       .filter(Boolean)
   ),
@@ -55,7 +92,7 @@ const customers = computed(() => [
 // ============================================================
 
 const filteredProjects = computed(() =>
-  props.projects.filter(project => {
+  projectList.value.filter(project => {
 
     const q =
       search.value
@@ -204,16 +241,16 @@ function getWorks(project, type) {
 
 const stats = computed(() => ({
   total:
-    props.projects.length,
+    projectList.value.length,
 
   normal:
-    props.projects.filter(
+    projectList.value.filter(
       p =>
         p.statusType === 'normal'
     ).length,
 
   paused:
-    props.projects.filter(
+    projectList.value.filter(
       p =>
         p.statusType === 'paused'
     ).length,

@@ -1,5 +1,8 @@
 <script setup>
-import { ref, computed } from 'vue';
+
+
+import { ref, computed, onMounted } from 'vue';
+import { supabase } from './lib/supabase';
 import * as XLSX from 'xlsx-js-style';
 
 import AppSidebar from './components/AppSidebar.vue';
@@ -25,8 +28,140 @@ import { ganttTemplates as mockTemplates } from './mock/ganttTemplates';
 const projects = ref(structuredClone(mockProjects));
 const tasks = ref(structuredClone(mockTasks));
 const reports = ref(structuredClone(mockReports));
-const links = ref(structuredClone(mockLinks));
-const templates = ref(structuredClone(mockTemplates));
+// ============================================================
+// 從 Supabase 載入週報
+// ============================================================
+
+async function loadWeeklyReports() {
+  const { data: reportData, error: reportError } = await supabase
+    .from('weekly_reports')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (reportError) {
+    console.error('載入週報失敗:', reportError);
+    return;
+  }
+
+  const { data: workData, error: workError } = await supabase
+    .from('weekly_report_works')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (workError) {
+    console.error('載入週報工作事項失敗:', workError);
+    return;
+  }
+
+  reports.value = (reportData || []).map((report) => {
+    const reportWorks = (workData || []).filter(
+      (work) =>
+        String(work.weekly_report_id) ===
+        String(report.id)
+    );
+
+    const lastWeekWorks = reportWorks
+      .filter((work) => work.work_type === 'last_week')
+      .map((work) => ({
+        id: work.id,
+        description: work.description || '',
+        taskIds: work.gantt_task_id
+          ? [work.gantt_task_id]
+          : [],
+      }));
+
+    const thisWeekWorks = reportWorks
+      .filter((work) => work.work_type === 'this_week')
+      .map((work) => ({
+        id: work.id,
+        description: work.description || '',
+        taskIds: work.gantt_task_id
+          ? [work.gantt_task_id]
+          : [],
+      }));
+
+    return {
+      id: report.id,
+
+      projectId: report.project_id,
+
+      week: report.week || '',
+
+      startDate: report.start_date || '',
+
+      endDate: report.end_date || '',
+
+      lastWeekActual: report.last_week_actual || '',
+
+      thisWeekPlan: report.this_week_plan || '',
+
+      todo: report.todo || '',
+
+      notes: report.notes || '',
+
+      lastWeekWorks,
+
+      thisWeekWorks,
+
+      // 保留目前 ProjectDetail 使用的舊格式
+      works: thisWeekWorks,
+    };
+  });
+
+  console.log('Supabase 週報載入完成:', reports.value);
+}
+
+
+
+// ============================================================
+// 從 Supabase 載入甘特項目
+// ============================================================
+
+async function loadGanttTasks() {
+  const { data, error } = await supabase
+    .from('gantt_tasks')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('載入甘特項目失敗:', error);
+    return;
+  }
+
+  tasks.value = (data || []).map((task) => ({
+    id: task.id,
+
+    projectId: task.project_id,
+
+    name: task.name || '',
+
+    start: task.start_date || '',
+
+    end: task.end_date || '',
+
+    progress: Number(task.progress) || 0,
+
+    status:
+      task.status ||
+      (
+        Number(task.progress) >= 100
+          ? '已完成'
+          : Number(task.progress) > 0
+          ? '進行中'
+          : '未開始'
+      ),
+
+    description: task.description || '',
+  }));
+
+  console.log('Supabase 甘特項目載入完成:', tasks.value);
+}
+
+const links = ref([]);
+
+
+
+const templates = ref([]);
 const projectDetailRef = ref(null);
 
 // ============================================================
@@ -107,6 +242,38 @@ function navigate(page) {
 }
 
 function openProject(project) {
+  // 如果這個專案是從 Supabase 取得、
+  // 但 App.vue 目前的 projects 裡沒有，
+  // 就先加入目前專案資料。
+  const index = projects.value.findIndex(
+    (p) => String(p.id) === String(project.id)
+  );
+
+  if (index === -1) {
+    projects.value.push({
+      ...project,
+      endDate: project.end_date ?? project.endDate ?? '',
+      lastWeek: project.last_week ?? project.lastWeek ?? '',
+      thisWeek: project.this_week ?? project.thisWeek ?? '',
+      statusType:
+        project.status_type ??
+        project.statusType ??
+        statusType(project.status),
+    });
+  } else {
+    projects.value[index] = {
+      ...projects.value[index],
+      ...project,
+      endDate: project.end_date ?? project.endDate ?? '',
+      lastWeek: project.last_week ?? project.lastWeek ?? '',
+      thisWeek: project.this_week ?? project.thisWeek ?? '',
+      statusType:
+        project.status_type ??
+        project.statusType ??
+        statusType(project.status),
+    };
+  }
+
   selectedProjectId.value = project.id;
   currentPage.value = 'project';
 }
@@ -173,7 +340,7 @@ function statusType(status) {
   return status === '暫緩' ? 'paused' : 'normal';
 }
 
-function saveProject(payload) {
+async function saveProject(payload) {
   const form = payload.form;
 
   if (!form.name || !form.name.trim()) {
@@ -181,35 +348,98 @@ function saveProject(payload) {
     return;
   }
 
+  // =========================
+  // 編輯既有專案
+  // =========================
   if (payload.editing) {
+    const { data, error } = await supabase
+      .from('projects')
+      .update({
+        name: form.name,
+        customer: form.customer,
+        sa: form.sa,
+        developer: form.developer,
+        end_date: form.endDate || null,
+        status: form.status,
+        status_type: statusType(form.status),
+        progress: Number(form.progress) || 0,
+        last_week: form.lastWeek,
+        this_week: form.thisWeek,
+        todo: form.todo,
+        notes: form.notes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', selectedProjectId.value)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('更新專案失敗:', error);
+      alert(`更新專案失敗：${error.message}`);
+      return;
+    }
+
     const index = projects.value.findIndex(
       (p) => String(p.id) === String(selectedProjectId.value)
     );
 
     if (index !== -1) {
       projects.value[index] = {
-        ...form,
-        id: selectedProjectId.value,
-        statusType: statusType(form.status),
+        ...data,
+        endDate: data.end_date,
+        lastWeek: data.last_week,
+        thisWeek: data.this_week,
+        statusType: data.status_type,
       };
     }
-  } else {
-    const id = Math.max(0, ...projects.value.map((p) => Number(p.id) || 0)) + 1;
+  }
 
-    projects.value.push({
-      ...form,
-      id,
-      statusType: statusType(form.status),
-    });
+  // =========================
+  // 新增專案
+  // =========================
+  else {
+    const { data, error } = await supabase
+      .from('projects')
+      .insert({
+        name: form.name,
+        customer: form.customer,
+        sa: form.sa,
+        developer: form.developer,
+        end_date: form.endDate || null,
+        status: form.status,
+        status_type: statusType(form.status),
+        progress: Number(form.progress) || 0,
+        last_week: form.lastWeek,
+        this_week: form.thisWeek,
+        todo: form.todo,
+        notes: form.notes,
+      })
+      .select()
+      .single();
 
-    selectedProjectId.value = id;
+    if (error) {
+      console.error('新增專案失敗:', error);
+      alert(`新增專案失敗：${error.message}`);
+      return;
+    }
+
+    const newProject = {
+      ...data,
+      endDate: data.end_date,
+      lastWeek: data.last_week,
+      thisWeek: data.this_week,
+      statusType: data.status_type,
+    };
+
+    projects.value.push(newProject);
+
+    selectedProjectId.value = data.id;
     currentPage.value = 'project';
   }
 
   showProjectModal.value = false;
 }
-
-function deleteSelectedProject() {
+async function deleteSelectedProject() {
   if (!selectedProject.value) return;
 
   if (!confirm(`確定刪除「${selectedProject.value.name}」？`)) {
@@ -218,15 +448,38 @@ function deleteSelectedProject() {
 
   const id = selectedProjectId.value;
 
-  projects.value = projects.value.filter((p) => String(p.id) !== String(id));
+  // =========================
+  // 刪除 Supabase 專案
+  // =========================
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', id);
 
-  tasks.value = tasks.value.filter((t) => String(t.projectId) !== String(id));
+  if (error) {
+    console.error('刪除專案失敗:', error);
+    alert(`刪除專案失敗：${error.message}`);
+    return;
+  }
+
+  // =========================
+  // 更新前端資料
+  // =========================
+  projects.value = projects.value.filter(
+    (p) => String(p.id) !== String(id)
+  );
+
+  tasks.value = tasks.value.filter(
+    (t) => String(t.projectId) !== String(id)
+  );
 
   reports.value = reports.value.filter(
     (r) => String(r.projectId) !== String(id)
   );
 
-  links.value = links.value.filter((l) => String(l.projectId) !== String(id));
+  links.value = links.value.filter(
+    (l) => String(l.projectId) !== String(id)
+  );
 
   navigate('overview');
 }
@@ -234,40 +487,116 @@ function deleteSelectedProject() {
 // ============================================================
 // 甘特項目
 // ============================================================
-
-function addTask({ form }) {
-  const id = Math.max(0, ...tasks.value.map((t) => Number(t.id) || 0)) + 1;
-
-  tasks.value.push({
-    ...form,
-    id,
-    projectId: selectedProjectId.value,
-    status:
-      Number(form.progress) >= 100
-        ? '已完成'
-        : Number(form.progress) > 0
-        ? '進行中'
-        : '未開始',
-  });
-}
-
-function editTask({ form, task }) {
-  if (!task) return;
-
-  Object.assign(task, form);
-
-  task.status =
+async function addTask({ form }) {
+  const status =
     Number(form.progress) >= 100
       ? '已完成'
       : Number(form.progress) > 0
       ? '進行中'
       : '未開始';
+
+  const { data, error } = await supabase
+    .from('gantt_tasks')
+    .insert({
+      project_id: selectedProjectId.value,
+      name: form.name || '',
+      start_date: form.start || null,
+      end_date: form.end || null,
+      progress: Number(form.progress) || 0,
+      status,
+      description: form.description || '',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('新增甘特項目失敗:', error);
+    alert(`新增甘特項目失敗：${error.message}`);
+    return;
+  }
+
+  const newTask = {
+    id: data.id,
+    projectId: data.project_id,
+    name: data.name || '',
+    start: data.start_date || '',
+    end: data.end_date || '',
+    progress: Number(data.progress) || 0,
+    status: data.status || '',
+    description: data.description || '',
+  };
+
+  tasks.value.push(newTask);
 }
 
-function deleteTask(task) {
+
+async function editTask({ form, task }) {
+  if (!task || !task.id) {
+    alert('找不到有效的甘特項目 ID');
+    return;
+  }
+
+  const taskId = Number(task.id);
+
+  if (!Number.isFinite(taskId)) {
+    alert('甘特項目 ID 無效');
+    return;
+  }
+
+  const progress = Number(form.progress) || 0;
+
+  const status =
+    progress >= 100
+      ? '已完成'
+      : progress > 0
+      ? '進行中'
+      : '未開始';
+
+  const { data, error } = await supabase
+    .from('gantt_tasks')
+    .update({
+      name: form.name || '',
+      start_date: form.start || null,
+      end_date: form.end || null,
+      progress,
+      status,
+      description: form.description || '',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', taskId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('更新甘特項目失敗:', error);
+    alert(`更新甘特項目失敗：${error.message}`);
+    return;
+  }
+
+  console.log('甘特項目更新成功:', data);
+
+  // 重新從 Supabase 載入最新甘特資料
+  await loadGanttTasks();
+}
+async function deleteTask(task) {
+  if (!task) return;
+
   if (!confirm(`刪除「${task.name}」？`)) return;
 
-  tasks.value = tasks.value.filter((x) => String(x.id) !== String(task.id));
+  const { error } = await supabase
+    .from('gantt_tasks')
+    .delete()
+    .eq('id', task.id);
+
+  if (error) {
+    console.error('刪除甘特項目失敗:', error);
+    alert(`刪除甘特項目失敗：${error.message}`);
+    return;
+  }
+
+  tasks.value = tasks.value.filter(
+    (x) => String(x.id) !== String(task.id)
+  );
 }
 
 // ============================================================
@@ -416,18 +745,17 @@ function getNextWeekInfo() {
 // 代表這一筆工作事項不關聯甘特
 // ------------------------------------------------------------
 
-function addWeekly(form) {
-  const id = Math.max(0, ...reports.value.map((r) => Number(r.id) || 0)) + 1;
+async function addWeekly(form) {
+  if (!form) {
+    return;
+  }
 
-  const workId =
-    Math.max(
-      0,
-      ...reports.value
-        .flatMap((r) => r.works || [])
-        .map((w) => Number(w.id) || 0)
-    ) + 1;
+  const projectId = selectedProjectId.value;
 
-  const project = selectedProject.value;
+  if (!projectId) {
+    alert('請先選擇專案。');
+    return;
+  }
 
   // ==========================================================
   // 本週工作事項
@@ -435,6 +763,21 @@ function addWeekly(form) {
 
   const thisWeekWorks = Array.isArray(form.thisWeekWorks)
     ? form.thisWeekWorks
+        .filter(
+          (work) =>
+            work &&
+            String(work.description || '').trim()
+        )
+        .map((work) => ({
+          description: String(
+            work.description || ''
+          ).trim(),
+
+          taskId:
+            work.taskId ??
+            work.ganttTaskId ??
+            null,
+        }))
     : [];
 
   // ==========================================================
@@ -443,83 +786,221 @@ function addWeekly(form) {
 
   const lastWeekWorks = Array.isArray(form.lastWeekWorks)
     ? form.lastWeekWorks
+        .filter(
+          (work) =>
+            work &&
+            String(work.description || '').trim()
+        )
+        .map((work) => ({
+          description: String(
+            work.description || ''
+          ).trim(),
+
+          taskId:
+            work.taskId ??
+            work.ganttTaskId ??
+            null,
+        }))
     : [];
 
   // ==========================================================
-  // 保留舊格式 works
-  //
-  // 目前系統右側「本週工作」仍然使用 works
-  // 所以這裡使用本週工作事項
+  // 1. 建立 weekly_reports
   // ==========================================================
 
-  const works = thisWeekWorks
-    .filter((work) => work && String(work.description || '').trim())
-    .map((work, index) => ({
-      id: Number(work.id) || workId + index,
+  const { data: reportData, error: reportError } =
+    await supabase
+      .from('weekly_reports')
+      .insert({
+        project_id: projectId,
 
-      description: String(work.description || '').trim(),
+        week: form.week || '',
 
-      taskIds: Array.isArray(work.taskIds) ? [...work.taskIds] : [],
-    }));
+        start_date:
+          form.startDate || null,
+
+        end_date:
+          form.endDate || null,
+
+        last_week_actual:
+          form.lastWeekActual ||
+          lastWeekWorks
+            .map((work) => work.description)
+            .join('\n'),
+
+        this_week_plan:
+          form.thisWeekPlan ||
+          thisWeekWorks
+            .map((work) => work.description)
+            .join('\n'),
+
+        todo: form.todo || '',
+
+        notes: form.notes || '',
+      })
+      .select()
+      .single();
+
+  if (reportError) {
+    console.error(
+      '新增週報失敗:',
+      reportError
+    );
+
+    alert(
+      `新增週報失敗：${reportError.message}`
+    );
+
+    return;
+  }
 
   // ==========================================================
-  // 建立週報
+  // 2. 建立 weekly_report_works
+  // ==========================================================
+
+  const worksToInsert = [
+    ...lastWeekWorks.map((work) => ({
+      weekly_report_id: reportData.id,
+
+      gantt_task_id:
+        work.taskId || null,
+
+      description:
+        work.description,
+
+      work_type:
+        'last_week',
+    })),
+
+    ...thisWeekWorks.map((work) => ({
+      weekly_report_id: reportData.id,
+
+      gantt_task_id:
+        work.taskId || null,
+
+      description:
+        work.description,
+
+      work_type:
+        'this_week',
+    })),
+  ];
+
+  if (worksToInsert.length > 0) {
+    const { error: worksError } =
+      await supabase
+        .from('weekly_report_works')
+        .insert(worksToInsert);
+
+    if (worksError) {
+      console.error(
+        '新增週報工作事項失敗:',
+        worksError
+      );
+
+      alert(
+        `新增週報工作事項失敗：${worksError.message}`
+      );
+
+      return;
+    }
+  }
+
+  // ==========================================================
+  // 3. 組成前端目前使用的 reports 格式
   // ==========================================================
 
   const report = {
     ...form,
 
-    id,
+    id: reportData.id,
 
-    projectId: selectedProjectId.value,
+    projectId:
+      reportData.project_id,
 
-    // ProjectDetail 已經自動算好
-    week: form.week || '',
+    week:
+      reportData.week || '',
 
-    startDate: form.startDate || '',
+    startDate:
+      reportData.start_date || '',
 
-    endDate: form.endDate || '',
+    endDate:
+      reportData.end_date || '',
 
-    range:
-      form.range ||
-      (form.startDate && form.endDate
-        ? `${form.startDate.replace(/-/g, '/')} ～ ${form.endDate.replace(
-            /-/g,
-            '/'
-          )}`
-        : ''),
+    lastWeekActual:
+      reportData.last_week_actual || '',
 
-    // 新版資料
+    thisWeekPlan:
+      reportData.this_week_plan || '',
+
+    todo:
+      reportData.todo || '',
+
+    notes:
+      reportData.notes || '',
+
     lastWeekWorks,
 
     thisWeekWorks,
 
-    // 舊版右側顯示使用
-    works,
+    works: thisWeekWorks.map(
+      (work, index) => ({
+        id:
+          index + 1,
+
+        description:
+          work.description,
+
+        taskIds:
+          work.taskId
+            ? [work.taskId]
+            : [],
+      })
+    ),
   };
+
+  // ==========================================================
+  // 4. 更新前端 reports
+  // ==========================================================
 
   reports.value.push(report);
 
   // ==========================================================
-  // 同步更新專案總覽
+  // 5. 同步更新專案總覽
   // ==========================================================
 
+  const project =
+    projects.value.find(
+      (p) =>
+        String(p.id) ===
+        String(projectId)
+    );
+
   if (project) {
-    project.lastWeek = form.lastWeekActual || project.lastWeek;
+    project.lastWeek =
+      report.lastWeekActual ||
+      project.lastWeek;
 
-    project.thisWeek = form.thisWeekPlan || project.thisWeek;
+    project.thisWeek =
+      report.thisWeekPlan ||
+      project.thisWeek;
 
-    project.todo = form.todo || project.todo;
+    project.todo =
+      report.todo ||
+      project.todo;
 
-    project.notes = form.notes || project.notes;
+    project.notes =
+      report.notes ||
+      project.notes;
   }
+
+
+
 }
 
 // ============================================================
 // 編輯既有每週進度
 // ============================================================
-
-function editWeekly(form) {
+async function editWeekly(form) {
   if (!form || !form.id) {
     return;
   }
@@ -535,176 +1016,964 @@ function editWeekly(form) {
 
   const oldReport = reports.value[index];
 
+  // ==========================================================
+  // 整理本週工作事項
+  // ==========================================================
+
   const thisWeekWorks = Array.isArray(form.thisWeekWorks)
     ? form.thisWeekWorks
-        .filter((work) => work && String(work.description || '').trim())
+        .filter(
+          (work) =>
+            work &&
+            String(work.description || '').trim()
+        )
         .map((work) => ({
-          id: Number(work.id) || Date.now() + Math.random(),
-          description: String(work.description || '').trim(),
-          taskIds: Array.isArray(work.taskIds) ? [...work.taskIds] : [],
+          id: Number(work.id) || null,
+
+          description:
+            String(work.description || '').trim(),
+
+          taskIds:
+            Array.isArray(work.taskIds)
+              ? [...work.taskIds]
+              : [],
         }))
     : [];
 
+  // ==========================================================
+  // 整理上週實際工作事項
+  // ==========================================================
+
   const lastWeekWorks = Array.isArray(form.lastWeekWorks)
     ? form.lastWeekWorks
-        .filter((work) => work && String(work.description || '').trim())
+        .filter(
+          (work) =>
+            work &&
+            String(work.description || '').trim()
+        )
         .map((work) => ({
-          id: Number(work.id) || Date.now() + Math.random(),
-          description: String(work.description || '').trim(),
-          taskIds: Array.isArray(work.taskIds) ? [...work.taskIds] : [],
+          id: Number(work.id) || null,
+
+          description:
+            String(work.description || '').trim(),
+
+          taskIds:
+            Array.isArray(work.taskIds)
+              ? [...work.taskIds]
+              : [],
         }))
     : [];
+
+  // ==========================================================
+  // 1. 更新 weekly_reports
+  // ==========================================================
+
+  const { data: reportData, error: reportError } =
+    await supabase
+      .from('weekly_reports')
+      .update({
+        week:
+          form.week ||
+          oldReport.week ||
+          '',
+
+        start_date:
+          form.startDate ||
+          oldReport.startDate ||
+          null,
+
+        end_date:
+          form.endDate ||
+          oldReport.endDate ||
+          null,
+
+        last_week_actual:
+          lastWeekWorks
+            .map((work) => work.description)
+            .join('\n'),
+
+        this_week_plan:
+          thisWeekWorks
+            .map((work) => work.description)
+            .join('\n'),
+
+        todo:
+          form.todo ||
+          '',
+
+        notes:
+          form.notes ||
+          '',
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq('id', oldReport.id)
+      .select()
+      .single();
+
+  if (reportError) {
+    console.error(
+      '更新週報失敗:',
+      reportError
+    );
+
+    alert(
+      `更新週報失敗：${reportError.message}`
+    );
+
+    return;
+  }
+
+  const { data: linkData, error: linkError } = await supabase
+  .from('project_links')
+  .select('*')
+  .order('id', { ascending: true });
+
+if (linkError) {
+  console.error('載入雲端資料失敗:', linkError);
+} else {
+  links.value = (linkData || []).map((link) => ({
+    id: link.id,
+    projectId: link.project_id,
+    name: link.name,
+    url: link.url,
+  }));
+}
+
+
+  // ==========================================================
+  // 2. 先刪除這一筆週報原本的工作事項
+  //
+  // 再重新建立目前畫面上的工作事項。
+  //
+  // 這樣可以處理：
+  // - 新增工作
+  // - 修改工作
+  // - 刪除工作
+  // ==========================================================
+
+  const { error: deleteWorksError } =
+    await supabase
+      .from('weekly_report_works')
+      .delete()
+      .eq(
+        'weekly_report_id',
+        oldReport.id
+      );
+
+  if (deleteWorksError) {
+    console.error(
+      '清除舊週報工作事項失敗:',
+      deleteWorksError
+    );
+
+    alert(
+      `更新週報工作事項失敗：${deleteWorksError.message}`
+    );
+
+    return;
+  }
+
+  // ==========================================================
+  // 3. 重新建立工作事項
+  // ==========================================================
+
+  const worksToInsert = [
+    ...lastWeekWorks.map((work) => ({
+      weekly_report_id:
+        reportData.id,
+
+      gantt_task_id:
+        work.taskIds.length > 0
+          ? work.taskIds[0]
+          : null,
+
+      description:
+        work.description,
+
+      work_type:
+        'last_week',
+    })),
+
+    ...thisWeekWorks.map((work) => ({
+      weekly_report_id:
+        reportData.id,
+
+      gantt_task_id:
+        work.taskIds.length > 0
+          ? work.taskIds[0]
+          : null,
+
+      description:
+        work.description,
+
+      work_type:
+        'this_week',
+    })),
+  ];
+
+  if (worksToInsert.length > 0) {
+    const { data: worksData, error: worksError } =
+      await supabase
+        .from('weekly_report_works')
+        .insert(worksToInsert)
+        .select();
+
+    if (worksError) {
+      console.error(
+        '重新建立週報工作事項失敗:',
+        worksError
+      );
+
+      alert(
+        `更新週報工作事項失敗：${worksError.message}`
+      );
+
+      return;
+    }
+  }
+
+  // ==========================================================
+  // 4. 組回前端 reports 格式
+  // ==========================================================
 
   const updatedReport = {
     ...oldReport,
 
     ...form,
 
-    // 保留原本 ID
-    id: oldReport.id,
+    // 保留資料庫 ID
+    id:
+      reportData.id,
 
-    // 保留專案
-    projectId: oldReport.projectId,
+    // 保留專案 ID
+    projectId:
+      reportData.project_id,
 
     // 日期
-    week: form.week || oldReport.week || '',
+    week:
+      reportData.week || '',
 
-    startDate: form.startDate || oldReport.startDate || '',
+    startDate:
+      reportData.start_date || '',
 
-    endDate: form.endDate || oldReport.endDate || '',
+    endDate:
+      reportData.end_date || '',
 
     range:
       form.range ||
-      (form.startDate && form.endDate
-        ? `${form.startDate.replace(/-/g, '/')} ～ ${form.endDate.replace(
-            /-/g,
-            '/'
-          )}`
-        : oldReport.range || ''),
+      (
+        reportData.start_date &&
+        reportData.end_date
+      )
+        ? `${String(
+            reportData.start_date
+          ).replace(/-/g, '/')} ～ ${String(
+            reportData.end_date
+          ).replace(/-/g, '/')}`
+        : oldReport.range || '',
+
+    // 週報內容
+    lastWeekActual:
+      reportData.last_week_actual ||
+      '',
+
+    thisWeekPlan:
+      reportData.this_week_plan ||
+      '',
+
+    todo:
+      reportData.todo ||
+      '',
+
+    notes:
+      reportData.notes ||
+      '',
 
     // 新版工作資料
     lastWeekWorks,
 
     thisWeekWorks,
 
-    // 舊欄位相容
-    lastWeekActual: lastWeekWorks.map((work) => work.description).join('\n'),
+    // 舊版相容
+    lastWeekTaskIds:
+      lastWeekWorks.flatMap(
+        (work) =>
+          work.taskIds || []
+      ),
 
-    thisWeekPlan: thisWeekWorks.map((work) => work.description).join('\n'),
+    taskIds:
+      thisWeekWorks.flatMap(
+        (work) =>
+          work.taskIds || []
+      ),
 
-    lastWeekTaskIds: lastWeekWorks.flatMap((work) => work.taskIds || []),
+    works:
+      thisWeekWorks.map(
+        (work) => ({
+          id:
+            work.id,
 
-    taskIds: thisWeekWorks.flatMap((work) => work.taskIds || []),
+          description:
+            work.description,
 
-    // 右側舊版資料
-    works: thisWeekWorks,
+          taskIds:
+            work.taskIds || [],
+        })
+      ),
   };
 
   // ==========================================================
-  // 真正修改 reports 裡的那一筆
+  // 5. 更新前端 reports
   // ==========================================================
 
-  reports.value[index] = updatedReport;
+  reports.value[index] =
+    updatedReport;
 
   // ==========================================================
-  // 同步專案資料
+  // 6. 同步更新專案總覽
   // ==========================================================
 
-  const projectIndex = projects.value.findIndex(
-    (project) => String(project.id) === String(oldReport.projectId)
-  );
+  const projectIndex =
+    projects.value.findIndex(
+      (project) =>
+        String(project.id) ===
+        String(
+          oldReport.projectId
+        )
+    );
 
   if (projectIndex !== -1) {
-    projects.value[projectIndex] = {
-      ...projects.value[projectIndex],
+    projects.value[
+      projectIndex
+    ] = {
+      ...projects.value[
+        projectIndex
+      ],
 
-      lastWeek: updatedReport.lastWeekActual || '',
+      lastWeek:
+        updatedReport.lastWeekActual ||
+        '',
 
-      thisWeek: updatedReport.thisWeekPlan || '',
+      thisWeek:
+        updatedReport.thisWeekPlan ||
+        '',
 
-      todo: updatedReport.todo || '',
+      todo:
+        updatedReport.todo ||
+        '',
 
-      notes: updatedReport.notes || '',
+      notes:
+        updatedReport.notes ||
+        '',
     };
   }
+}
+
+async function deleteWeekly(report) {
+  if (!report) return;
+
+  if (!confirm(`確定要刪除「${report.week || '這筆週報'}」嗎？`)) {
+    return;
+  }
+
+  const reportId = Number(report.id);
+
+  if (!Number.isFinite(reportId)) {
+    alert('找不到有效的週報 ID');
+    return;
+  }
+
+  // ==========================================================
+  // 先刪除週報工作事項
+  // ==========================================================
+
+  const { error: worksError } = await supabase
+    .from('weekly_report_works')
+    .delete()
+    .eq('weekly_report_id', reportId);
+
+  if (worksError) {
+    console.error('刪除週報工作事項失敗:', worksError);
+    alert(`刪除週報工作事項失敗：${worksError.message}`);
+    return;
+  }
+
+  // ==========================================================
+  // 再刪除週報
+  // ==========================================================
+
+  const { error: reportError } = await supabase
+    .from('weekly_reports')
+    .delete()
+    .eq('id', reportId);
+
+  if (reportError) {
+    console.error('刪除週報失敗:', reportError);
+    alert(`刪除週報失敗：${reportError.message}`);
+    return;
+  }
+
+  // ==========================================================
+  // 更新前端畫面
+  // ==========================================================
+
+  reports.value = reports.value.filter(
+    (r) => String(r.id) !== String(reportId)
+  );
+
+  console.log('週報刪除成功:', reportId);
 }
 
 // ============================================================
 // 甘特關聯
 // ============================================================
+async function addLink(form) {
+  if (!form) return;
 
-function addLink(form) {
-  const id = Math.max(0, ...links.value.map((l) => Number(l.id) || 0)) + 1;
+  const projectId = Number(selectedProjectId.value);
+
+  if (!Number.isFinite(projectId)) {
+    alert('找不到有效的專案 ID');
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('project_links')
+    .insert({
+      project_id: projectId,
+      name: String(form.name || '').trim(),
+      url: String(form.url || '').trim(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('新增雲端資料失敗:', error);
+    alert(`新增雲端資料失敗：${error.message}`);
+    return;
+  }
 
   links.value.push({
-    ...form,
-    id,
-    projectId: selectedProjectId.value,
+    id: data.id,
+    projectId: data.project_id,
+    name: data.name,
+    url: data.url,
   });
 }
 
-function deleteLink(link) {
-  if (!confirm(`刪除「${link.name}」？`)) return;
+async function deleteLink(link) {
+  if (!link) return;
 
-  links.value = links.value.filter((x) => String(x.id) !== String(link.id));
+  if (!confirm(`確定要刪除「${link.name}」嗎？`)) {
+    return;
+  }
+
+  const linkId = Number(link.id);
+
+  if (!Number.isFinite(linkId)) {
+    alert('找不到有效的雲端資料 ID');
+    return;
+  }
+
+  const { error } = await supabase
+    .from('project_links')
+    .delete()
+    .eq('id', linkId);
+
+  if (error) {
+    console.error('刪除雲端資料失敗:', error);
+    alert(`刪除雲端資料失敗：${error.message}`);
+    return;
+  }
+
+  // 更新前端畫面
+  links.value = links.value.filter(
+    (x) => String(x.id) !== String(linkId)
+  );
 }
 
 // ============================================================
 // 甘特模板
 // ============================================================
 
-function applyTemplate(template) {
-  const base = Math.max(0, ...tasks.value.map((t) => Number(t.id) || 0));
+// ============================================================
+// 從 Supabase 載入甘特模板
+// ============================================================
 
-  template.tasks.forEach((name, index) => {
-    tasks.value.push({
-      id: base + index + 1,
-      projectId: selectedProjectId.value,
-      name,
-      start: '2026-08-11',
-      end: '2026-09-30',
-      progress: 0,
-      status: '未開始',
-      description: '',
-    });
-  });
+async function loadGanttTemplates() {
+  const { data: templateData, error: templateError } =
+    await supabase
+      .from('gantt_templates')
+      .select('*')
+      .order('id', { ascending: true });
+
+  if (templateError) {
+    console.error('載入甘特模板失敗:', templateError);
+    return;
+  }
+
+  const { data: taskData, error: taskError } =
+    await supabase
+      .from('gantt_template_tasks')
+      .select('*')
+      .order('sequence', { ascending: true });
+
+  if (taskError) {
+    console.error('載入甘特模板項目失敗:', taskError);
+    return;
+  }
+
+  templates.value = (templateData || []).map((template) => ({
+    id: template.id,
+    type: template.type || 'custom',
+    name: template.name || '',
+    description: template.description || '',
+
+    tasks: (taskData || [])
+      .filter(
+        (task) =>
+          String(task.template_id) === String(template.id)
+      )
+      .sort(
+        (a, b) =>
+          Number(a.sequence || 0) -
+          Number(b.sequence || 0)
+      )
+      .map((task) => task.name || ''),
+  }));
+
+  console.log('Supabase 甘特模板載入完成:', templates.value);
 }
 
-function saveTemplate({ form, editing }) {
-  const item = {
-    name: form.name,
-    description: form.description,
-    tasks: form.tasksText
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean),
-  };
+async function applyTemplate(template) {
+  if (!template) return;
+
+  const projectId = Number(selectedProjectId.value);
+
+  if (!Number.isFinite(projectId)) {
+    alert('找不到有效的專案 ID');
+    return;
+  }
+
+  const taskNames = Array.isArray(template.tasks)
+    ? template.tasks
+        .map((name) => String(name || '').trim())
+        .filter(Boolean)
+    : [];
+
+  if (taskNames.length === 0) {
+    alert('此模板沒有甘特項目');
+    return;
+  }
+
+  // ==========================================================
+  // 目前專案已有的甘特項目
+  // ==========================================================
+
+  const currentProjectTasks = tasks.value.filter(
+    (task) =>
+      String(task.projectId) === String(projectId)
+  );
+
+  // ==========================================================
+  // 如果已有甘特項目，先確認是否要取代
+  // ==========================================================
+
+  if (currentProjectTasks.length > 0) {
+    const confirmed = confirm(
+      `此專案目前已有 ${currentProjectTasks.length} 個甘特項目。\n\n` +
+      `套用「${template.name}」後，將會取代目前的甘特項目。\n\n` +
+      `確定要繼續嗎？`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  // ==========================================================
+  // 先刪除目前專案的甘特項目
+  // ==========================================================
+
+  if (currentProjectTasks.length > 0) {
+    const oldTaskIds = currentProjectTasks
+      .map((task) => Number(task.id))
+      .filter((id) => Number.isFinite(id));
+
+    if (oldTaskIds.length > 0) {
+      const { error: deleteError } =
+        await supabase
+          .from('gantt_tasks')
+          .delete()
+          .in('id', oldTaskIds);
+
+      if (deleteError) {
+        console.error(
+          '取代甘特項目失敗:',
+          deleteError
+        );
+
+        alert(
+          `取代甘特項目失敗：${deleteError.message}`
+        );
+
+        return;
+      }
+    }
+  }
+
+  // ==========================================================
+  // 建立新模板的甘特項目
+  // ==========================================================
+
+  const taskRows = taskNames.map((name) => ({
+    project_id: projectId,
+
+    name,
+
+    start_date: '2026-08-11',
+
+    end_date: '2026-09-30',
+
+    progress: 0,
+
+    status: '未開始',
+
+    description: '',
+  }));
+
+  const { data, error } =
+    await supabase
+      .from('gantt_tasks')
+      .insert(taskRows)
+      .select();
+
+  if (error) {
+    console.error(
+      '套用甘特模板失敗:',
+      error
+    );
+
+    alert(
+      `套用甘特模板失敗：${error.message}`
+    );
+
+    // 重新讀取，確保前端與 DB 保持一致
+    await loadGanttTasks();
+
+    return;
+  }
+
+  // ==========================================================
+  // 更新前端
+  // ==========================================================
+
+  const newTasks = (data || []).map((task) => ({
+    id: task.id,
+
+    projectId: task.project_id,
+
+    name: task.name || '',
+
+    start: task.start_date || '',
+
+    end: task.end_date || '',
+
+    progress: Number(task.progress) || 0,
+
+    status: task.status || '未開始',
+
+    description: task.description || '',
+  }));
+
+  // 直接重新載入 Supabase
+  // 確保畫面與資料庫完全一致
+  await loadGanttTasks();
+
+  console.log(
+    `甘特模板「${template.name}」套用成功`,
+    newTasks
+  );
+
+  alert(
+    `已套用「${template.name}」模板，共建立 ${newTasks.length} 個甘特項目。`
+  );
+}
+
+async function saveTemplate({ form, editing }) {
+  if (!form) return;
+
+  const name = String(form.name || '').trim();
+
+  if (!name) {
+    alert('請輸入模板名稱');
+    return;
+  }
+
+  const description =
+    String(form.description || '').trim();
+
+  const taskNames = String(form.tasksText || '')
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  // ==========================================================
+  // 編輯模板
+  // ==========================================================
 
   if (editing) {
-    const old = templates.value.find((t) => String(t.id) === String(form.id));
+    const templateId = Number(form.id);
 
-    if (old) {
-      Object.assign(old, item);
+    if (!Number.isFinite(templateId)) {
+      alert('找不到有效的模板 ID');
+      return;
     }
-  } else {
-    const id =
-      Math.max(0, ...templates.value.map((t) => Number(t.id) || 0)) + 1;
 
-    templates.value.push({
-      ...item,
-      id,
-      type: 'custom',
-    });
+    // --------------------------------------------------------
+    // 1. 更新模板基本資料
+    // --------------------------------------------------------
+
+    const { data: templateData, error: templateError } =
+      await supabase
+        .from('gantt_templates')
+        .update({
+          name,
+          description,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', templateId)
+        .select()
+        .single();
+
+    if (templateError) {
+      console.error('更新甘特模板失敗:', templateError);
+      alert(`更新甘特模板失敗：${templateError.message}`);
+      return;
+    }
+
+    // --------------------------------------------------------
+    // 2. 刪除舊的模板項目
+    // --------------------------------------------------------
+
+    const { error: deleteTaskError } =
+      await supabase
+        .from('gantt_template_tasks')
+        .delete()
+        .eq('template_id', templateId);
+
+    if (deleteTaskError) {
+      console.error(
+        '清除舊模板項目失敗:',
+        deleteTaskError
+      );
+
+      alert(
+        `更新模板項目失敗：${deleteTaskError.message}`
+      );
+
+      return;
+    }
+
+    // --------------------------------------------------------
+    // 3. 重新建立模板項目
+    // --------------------------------------------------------
+
+    const taskRows = taskNames.map((taskName, index) => ({
+      template_id: templateId,
+      sequence: index + 1,
+      name: taskName,
+    }));
+
+    if (taskRows.length > 0) {
+      const { error: insertTaskError } =
+        await supabase
+          .from('gantt_template_tasks')
+          .insert(taskRows);
+
+      if (insertTaskError) {
+        console.error(
+          '重新建立模板項目失敗:',
+          insertTaskError
+        );
+
+        alert(
+          `更新模板項目失敗：${insertTaskError.message}`
+        );
+
+        return;
+      }
+    }
+
+    // --------------------------------------------------------
+    // 4. 更新前端
+    // --------------------------------------------------------
+
+    const index = templates.value.findIndex(
+      (template) =>
+        String(template.id) === String(templateId)
+    );
+
+    const updatedTemplate = {
+      id: templateData.id,
+      type: templateData.type || 'custom',
+      name: templateData.name || '',
+      description: templateData.description || '',
+      tasks: taskNames,
+    };
+
+    if (index !== -1) {
+      templates.value[index] = updatedTemplate;
+    }
+
+    console.log('甘特模板更新成功:', updatedTemplate);
+
+    return;
   }
-}
 
-function deleteTemplate(template) {
+  // ==========================================================
+  // 新增模板
+  // ==========================================================
+
+  const { data: templateData, error: templateError } =
+    await supabase
+      .from('gantt_templates')
+      .insert({
+        type: 'custom',
+        name,
+        description,
+      })
+      .select()
+      .single();
+
+  if (templateError) {
+    console.error('新增甘特模板失敗:', templateError);
+    alert(`新增甘特模板失敗：${templateError.message}`);
+    return;
+  }
+
+  // ----------------------------------------------------------
+  // 建立模板項目
+  // ----------------------------------------------------------
+
+  const taskRows = taskNames.map((taskName, index) => ({
+    template_id: templateData.id,
+    sequence: index + 1,
+    name: taskName,
+  }));
+
+  if (taskRows.length > 0) {
+    const { error: insertTaskError } =
+      await supabase
+        .from('gantt_template_tasks')
+        .insert(taskRows);
+
+    if (insertTaskError) {
+      console.error(
+        '新增模板項目失敗:',
+        insertTaskError
+      );
+
+      alert(
+        `新增模板項目失敗：${insertTaskError.message}`
+      );
+
+      return;
+    }
+  }
+
+  // ----------------------------------------------------------
+  // 更新前端
+  // ----------------------------------------------------------
+
+  templates.value.push({
+    id: templateData.id,
+    type: templateData.type || 'custom',
+    name: templateData.name || '',
+    description: templateData.description || '',
+    tasks: taskNames,
+  });
+
+  console.log(
+    '甘特模板新增成功:',
+    templateData
+  );
+}
+async function deleteTemplate(template) {
+  if (!template) return;
+
   if (!confirm(`刪除模板「${template.name}」？`)) {
     return;
   }
 
-  templates.value = templates.value.filter(
-    (x) => String(x.id) !== String(template.id)
+  const templateId = Number(template.id);
+
+  if (!Number.isFinite(templateId)) {
+    alert('找不到有效的模板 ID');
+    return;
+  }
+
+  // ==========================================================
+  // 1. 先刪除模板項目
+  // ==========================================================
+
+  const { error: taskError } =
+    await supabase
+      .from('gantt_template_tasks')
+      .delete()
+      .eq('template_id', templateId);
+
+  if (taskError) {
+    console.error(
+      '刪除模板項目失敗:',
+      taskError
+    );
+
+    alert(
+      `刪除模板項目失敗：${taskError.message}`
+    );
+
+    return;
+  }
+
+  // ==========================================================
+  // 2. 再刪除模板
+  // ==========================================================
+
+  const { error: templateError } =
+    await supabase
+      .from('gantt_templates')
+      .delete()
+      .eq('id', templateId);
+
+  if (templateError) {
+    console.error(
+      '刪除甘特模板失敗:',
+      templateError
+    );
+
+    alert(
+      `刪除甘特模板失敗：${templateError.message}`
+    );
+
+    return;
+  }
+
+  // ==========================================================
+  // 3. 更新前端
+  // ==========================================================
+
+  templates.value =
+    templates.value.filter(
+      (x) =>
+        String(x.id) !== String(templateId)
+    );
+
+  console.log(
+    '甘特模板刪除成功:',
+    templateId
   );
 }
 
@@ -1821,8 +3090,14 @@ function exportGanttExcel(projectId = 'all') {
 }
 
 // ============================================================
-// Template
+// App 啟動時載入 Supabase 週報
 // ============================================================
+
+onMounted(() => {
+  loadWeeklyReports();
+  loadGanttTasks();
+  loadGanttTemplates();
+});
 
 defineExpose({
   addProject,
@@ -1902,7 +3177,8 @@ defineExpose({
         @edit-task="editTask"
         @delete-task="deleteTask"
         @add-weekly="addWeekly"
-        @edit-weekly="editWeekly"
+@edit-weekly="editWeekly"
+@delete-weekly="deleteWeekly"
         @add-link="addLink"
         @delete-link="deleteLink"
         @apply-template="applyTemplate"

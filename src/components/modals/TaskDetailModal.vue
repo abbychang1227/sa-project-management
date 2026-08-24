@@ -16,7 +16,11 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['close', 'edit']);
+const emit = defineEmits([
+  'close',
+  'edit',
+  'delete',
+]);
 
 // ============================================================
 // 取得週報中與目前甘特項目有關聯的工作
@@ -195,6 +199,14 @@ function getLinkedWorks(report) {
       <button type="button" class="primary full" @click="emit('edit', task)">
         編輯此甘特項目
       </button>
+
+      <button
+  type="button"
+  class="delete-task full"
+  @click="emit('delete', task)"
+>
+  刪除此甘特項目
+</button>
     </div>
   </div>
 </template>
@@ -442,6 +454,27 @@ function getLinkedWorks(report) {
   background: var(--pm-primary-dark);
 }
 
+
+.delete-task {
+  margin-top: 10px;
+
+  border: 1px solid #e7bcbc;
+  border-radius: 9px;
+
+  padding: 12px 16px;
+
+  background: #fff;
+  color: #b45e5e;
+
+  font-size: 17px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.delete-task:hover {
+  background: #fff1f1;
+}
 /* ============================================================
    RWD
 ============================================================ */
