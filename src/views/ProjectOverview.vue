@@ -1,6 +1,5 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue'
-import { supabase } from '../lib/supabase'
+import { computed, ref } from 'vue'
 import ProjectStats from '../components/ProjectStats.vue'
 import ProjectFilters from '../components/ProjectFilters.vue'
 import ProjectTable from '../components/ProjectTable.vue'
@@ -26,6 +25,7 @@ const props = defineProps({
 const emit = defineEmits([
   'open',
   'save',
+  'export',
 ])
 
 const search = ref('')
@@ -39,48 +39,12 @@ const form = ref({})
 
 
 // ============================================================
-// Supabase 專案資料
-// ============================================================
-
-const dbProjects = ref([])
-
-async function loadProjects() {
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .order('id', { ascending: true })
-
-  if (error) {
-    console.error('讀取 projects 失敗:', error)
-    return
-  }
-
-  dbProjects.value = data || []
-
-  console.log(
-    'ProjectOverview 已讀取 Supabase projects:',
-    dbProjects.value
-  )
-}
-
-onMounted(() => {
-  loadProjects()
-})
-
-const projectList = computed(() =>
-  dbProjects.value.length
-    ? dbProjects.value
-    : props.projects
-)
-
-
-// ============================================================
 // 客戶
 // ============================================================
 
 const customers = computed(() => [
   ...new Set(
-    projectList.value
+    props.projects
       .map(p => p.customer)
       .filter(Boolean)
   ),
@@ -92,7 +56,7 @@ const customers = computed(() => [
 // ============================================================
 
 const filteredProjects = computed(() =>
-  projectList.value.filter(project => {
+  props.projects.filter(project => {
 
     const q =
       search.value
@@ -171,7 +135,64 @@ function getLatestReport(project) {
   })[0]
 }
 
+function getLatestReportField(project, field) {
+  const list = props.reports
+    .filter(
+      report =>
+        String(report.projectId) ===
+        String(project.id)
+    )
+    .sort((a, b) => {
+      const aWeek =
+        Number(
+          String(a.week || '')
+            .replace(/\D/g, '')
+        ) || 0
 
+      const bWeek =
+        Number(
+          String(b.week || '')
+            .replace(/\D/g, '')
+        ) || 0
+
+      if (aWeek !== bWeek) {
+        return bWeek - aWeek
+      }
+
+      return (
+        Number(b.id || 0) -
+        Number(a.id || 0)
+      )
+    })
+
+  for (const report of list) {
+    const value = String(
+      report?.[field] || ''
+    ).trim()
+
+    if (value) {
+      return value
+    }
+  }
+
+  return ''
+}
+
+function getTodo(project) {
+  return (
+    getLatestReportField(project, 'todo') ||
+    project.todo ||
+    ''
+  )
+}
+
+function getNotes(project) {
+  return (
+    getLatestReportField(project, 'notes') ||
+    project.notes ||
+    ''
+  )
+}
 // ============================================================
 // 工作事項
 // ============================================================
@@ -240,20 +261,23 @@ function getWorks(project, type) {
 // ============================================================
 
 const stats = computed(() => ({
-  total:
-    projectList.value.length,
+  total: props.projects.length,
 
-  normal:
-    projectList.value.filter(
-      p =>
-        p.statusType === 'normal'
-    ).length,
+  proposal: props.projects.filter(
+    p => p.status === '提案中'
+  ).length,
 
-  paused:
-    projectList.value.filter(
-      p =>
-        p.statusType === 'paused'
-    ).length,
+  development: props.projects.filter(
+    p => p.status === '開發中'
+  ).length,
+
+  acceptance: props.projects.filter(
+    p => p.status === '驗收中'
+  ).length,
+
+  maintenance: props.projects.filter(
+    p => p.status === '維運中'
+  ).length,
 }))
 
 
@@ -271,7 +295,7 @@ function addProject() {
     sa: '',
     developer: '',
     endDate: '',
-    status: '進行中',
+    status: '提案中',
     progress: 0,
     lastWeek: '',
     thisWeek: '',
@@ -349,7 +373,7 @@ defineExpose({
         <button
           type="button"
           class="btn btn-primary"
-          @click="exportProjects"
+          @click="emit('export')"
         >
           匯出專案 Excel
         </button>
@@ -380,10 +404,12 @@ defineExpose({
          專案控管表
     ========================== -->
 
-<ProjectTable
+    <ProjectTable
   :projects="filteredProjects"
   :reports="reports"
   :tasks="tasks"
+  :get-todo="getTodo"
+  :get-notes="getNotes"
   @open="emit('open', $event)"
 />
 

@@ -132,10 +132,14 @@ function setThisValue(index, value) {
 function save() {
   emit('save');
 }
+
+function handleBackdropClick() {
+  // 編輯中的資料不因誤觸背景而關閉
+}
 </script>
 
 <template>
-  <div v-if="visible" class="backdrop" @click.self="emit('close')">
+  <div v-if="visible" class="backdrop" @click.self="handleBackdropClick">
     <div class="modal">
       <!-- ====================================================
            Header
@@ -188,7 +192,10 @@ function save() {
           狀態
 
           <select v-model="form.status">
-            <option value="進行中">進行中</option>
+            <option value="提案中">提案中</option>
+  <option value="開發中">開發中</option>
+  <option value="驗收中">驗收中</option>
+  <option value="維運中">維運中</option>
 
             <option value="暫緩">暫緩</option>
           </select>

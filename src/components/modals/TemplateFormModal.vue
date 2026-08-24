@@ -2,9 +2,12 @@
 <script setup>
 defineProps({ visible: Boolean, form: Object, editing: Boolean })
 const emit = defineEmits(['close','save'])
+function handleBackdropClick() {
+  // 編輯中的資料不因誤觸背景而關閉
+}
 </script>
 <template>
-  <div v-if="visible" class="backdrop" @click.self="emit('close')"><div class="modal">
+  <div v-if="visible" class="backdrop" @click.self="handleBackdropClick"><div class="modal">
     <div class="head"><h3>{{editing?'編輯模板':'新增甘特模板'}}</h3><button @click="emit('close')">×</button></div>
     <label>模板名稱<input v-model="form.name"></label>
     <label>說明<input v-model="form.description"></label>

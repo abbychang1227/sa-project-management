@@ -1,6 +1,32 @@
 <script setup>
 import { computed, ref } from 'vue';
 
+const showNotesModal = ref(false)
+const selectedNotes = ref('')
+
+function openNotes(project) {
+  selectedNotes.value = props.getNotes(project) || ''
+  showNotesModal.value = true
+}
+
+function closeNotes() {
+  showNotesModal.value = false
+  selectedNotes.value = ''
+}
+
+
+const showTodoModal = ref(false)
+const selectedTodo = ref('')
+
+function openTodo(project) {
+  selectedTodo.value = props.getTodo(project) || ''
+  showTodoModal.value = true
+}
+
+function closeTodo() {
+  showTodoModal.value = false
+  selectedTodo.value = ''
+}
 const props = defineProps({
   projects: {
     type: Array,
@@ -16,6 +42,16 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+
+  getTodo: {
+  type: Function,
+  default: () => '',
+},
+
+getNotes: {
+  type: Function,
+  default: () => '',
+},
 });
 
 const emit = defineEmits(['open']);
@@ -55,6 +91,27 @@ function getTaskName(taskId) {
 
   return task?.name || '';
 }
+
+
+function getStatusClass(status) {
+  switch (status) {
+    case '提案中':
+      return 'proposal'
+
+    case '開發中':
+      return 'development'
+
+    case '驗收中':
+      return 'acceptance'
+
+    case '維運中':
+      return 'maintenance'
+
+    default:
+      return 'default'
+  }
+}
+
 
 // ============================================================
 // 取得工作事項
@@ -249,6 +306,55 @@ function getReportWorks(report, taskId) {
 </script>
 
 <template>
+
+<div
+  v-if="showTodoModal"
+  class="notes-modal-backdrop"
+  @click.self="closeTodo"
+>
+  <div class="notes-modal">
+    <div class="notes-modal-head">
+      <h3>待辦</h3>
+
+      <button
+        type="button"
+        class="notes-close"
+        @click="closeTodo"
+      >
+        ×
+      </button>
+    </div>
+
+    <div class="notes-full">
+      {{ selectedTodo }}
+    </div>
+  </div>
+</div>
+<div
+  v-if="showNotesModal"
+  class="notes-modal-backdrop"
+  @click.self="closeNotes"
+>
+  <div class="notes-modal">
+    <div class="notes-modal-head">
+      <h3>備註</h3>
+
+      <button
+        type="button"
+        class="notes-close"
+        @click="closeNotes"
+      >
+        ×
+      </button>
+    </div>
+
+    <div class="notes-full">
+      {{ selectedNotes }}
+    </div>
+  </div>
+</div>
+
+
   <div class="table-card">
     <table class="project-table">
       <thead>
@@ -306,9 +412,9 @@ function getReportWorks(report, taskId) {
                 {{ project.sa[0] }}
               </div>
 
-              <span>
+              <!-- <span>
                 {{ project.sa }}
-              </span>
+              </span> -->
             </div>
 
             <span v-else> — </span>
@@ -328,12 +434,9 @@ function getReportWorks(report, taskId) {
 
           <td>
             <div
-              class="status"
-              :class="
-                project.statusType ||
-                (project.status === '暫緩' ? 'paused' : 'normal')
-              "
-            >
+  class="status"
+  :class="getStatusClass(project.status)"
+>
               <span class="status-dot"></span>
 
               <span>
@@ -426,17 +529,51 @@ function getReportWorks(report, taskId) {
              待辦
         ================================================== -->
 
-          <td class="text-cell">
-            {{ project.todo || '—' }}
-          </td>
+        <td class="text-cell">
+  <div
+    v-if="props.getTodo(project)"
+    class="notes-preview"
+  >
+    <div class="notes-text">
+      {{ props.getTodo(project) }}
+    </div>
+
+    <button
+      type="button"
+      class="notes-more"
+      @click.stop="openTodo(project)"
+    >
+      查看更多
+    </button>
+  </div>
+
+  <span v-else>—</span>
+</td>
 
           <!-- ==================================================
              備註
         ================================================== -->
 
-          <td class="text-cell">
-            {{ project.notes || '—' }}
-          </td>
+        <td class="text-cell">
+  <div
+    v-if="props.getNotes(project)"
+    class="notes-preview"
+  >
+    <div class="notes-text">
+      {{ props.getNotes(project) }}
+    </div>
+
+    <button
+      type="button"
+      class="notes-more"
+      @click.stop="openNotes(project)"
+    >
+      查看更多
+    </button>
+  </div>
+
+  <span v-else>—</span>
+</td>
         </tr>
 
         <!-- ====================================================
@@ -519,6 +656,146 @@ function getReportWorks(report, taskId) {
 </template>
 
 <style scoped>
+
+.notes-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.notes-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.notes-more {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--pm-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notes-more:hover {
+  text-decoration: underline;
+}
+
+.notes-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.notes-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+
+  overflow: hidden;
+
+  line-height: 1.5;
+}
+
+.notes-more {
+  width: fit-content;
+
+  border: 0;
+  padding: 0;
+
+  background: transparent;
+
+  color: var(--pm-primary);
+  font-size: 14px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.notes-more:hover {
+  text-decoration: underline;
+}
+
+
+/* =========================
+   備註視窗
+========================= */
+
+.notes-modal-backdrop {
+  position: fixed;
+  inset: 0;
+
+  z-index: 100;
+
+  display: grid;
+  place-items: center;
+
+  padding: 20px;
+
+  background: rgba(37, 55, 70, 0.42);
+}
+
+.notes-modal {
+  width: min(650px, 100%);
+  max-height: 80vh;
+
+  overflow: auto;
+
+  background: #fff;
+
+  border-radius: 16px;
+
+  padding: 24px;
+
+  box-shadow: 0 20px 50px rgba(37, 55, 70, 0.2);
+}
+
+.notes-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 18px;
+}
+
+.notes-modal-head h3 {
+  margin: 0;
+
+  color: var(--pm-text);
+
+  font-size: 22px;
+}
+
+.notes-close {
+  width: 36px;
+  height: 36px;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: var(--pm-soft);
+
+  color: var(--pm-text);
+
+  font-size: 22px;
+
+  cursor: pointer;
+}
+
+.notes-full {
+  color: var(--pm-text);
+
+  font-size: 16px;
+  line-height: 1.8;
+
+  white-space: pre-wrap;
+}
+
 .table-card {
   background: #fff;
   border: 1px solid var(--pm-border);
@@ -610,17 +887,44 @@ td {
   height: 9px;
   border-radius: 50%;
 }
-.status.normal {
+.status.proposal {
+  color: #8a6d3b;
+}
+
+.status.proposal .status-dot {
+  background: #d6a84f;
+}
+
+.status.development {
   color: #4d866a;
 }
-.status.normal .status-dot {
+
+.status.development .status-dot {
   background: var(--pm-success);
 }
-.status.paused {
-  color: #6e7b80;
+
+.status.acceptance {
+  color: #4f7291;
 }
-.status.paused .status-dot {
-  background: var(--pm-paused);
+
+.status.acceptance .status-dot {
+  background: #5f8fb5;
+}
+
+.status.maintenance {
+  color: #765f8f;
+}
+
+.status.maintenance .status-dot {
+  background: #8b6baa;
+}
+
+.status.default {
+  color: var(--pm-muted);
+}
+
+.status.default .status-dot {
+  background: var(--pm-muted);
 }
 .progress-wrapper {
   min-width: 95px;

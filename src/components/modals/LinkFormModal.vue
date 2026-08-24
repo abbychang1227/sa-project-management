@@ -2,9 +2,13 @@
 <script setup>
 defineProps({ visible:Boolean, form:Object })
 const emit=defineEmits(['close','save'])
+
+function handleBackdropClick() {
+  // 編輯中的資料不因誤觸背景而關閉
+}
 </script>
 <template>
-  <div v-if="visible" class="backdrop" @click.self="emit('close')"><div class="modal">
+  <div v-if="visible" class="backdrop" @click.self="handleBackdropClick"><div class="modal">
     <div class="head"><h3>新增雲端連結</h3><button @click="emit('close')">×</button></div>
     <label>連結名稱<input v-model="form.name" placeholder="例如：UI 動態示意畫面"></label>
     <label>網址<input v-model="form.url" placeholder="https://..."></label>

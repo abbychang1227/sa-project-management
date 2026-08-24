@@ -12,9 +12,12 @@ const emit = defineEmits(['update:search','update:statusFilter','update:saFilter
     </label>
 
     <select :value="statusFilter" @change="emit('update:statusFilter', $event.target.value)">
-      <option>全部狀態</option>
-      <option>進行中</option>
-      <option>暫緩</option>
+      <option value="全部狀態">全部狀態</option>
+<option value="提案中">提案中</option>
+<option value="開發中">開發中</option>
+<option value="驗收中">驗收中</option>
+<option value="維運中">維運中</option>
+<option value="暫緩">暫緩</option>
     </select>
 
     <select :value="saFilter" @change="emit('update:saFilter', $event.target.value)">

@@ -237,28 +237,30 @@ function openWeekly() {
   const weekNumber = getWeekNumber(monday);
 
   weeklyForm.value = {
-    id: null,
+  id: null,
 
-    week: `W${weekNumber}`,
+  projectId: props.project.id,
 
-    startDate: formatDate(monday),
+  week: `W${weekNumber}`,
 
-    endDate: formatDate(friday),
+  startDate: formatDate(monday),
 
-    range: `${formatDate(monday).replace(/-/g, '/')} ～ ${formatDate(
-      friday
-    ).replace(/-/g, '/')}`,
+  endDate: formatDate(friday),
 
-    lastWeekActual: '',
-    thisWeekPlan: '',
+  range: `${formatDate(monday).replace(/-/g, '/')} ～ ${formatDate(
+    friday
+  ).replace(/-/g, '/')}`,
 
-    lastWeekWorks: [createWorkItem(), createWorkItem(), createWorkItem()],
+  lastWeekActual: '',
+  thisWeekPlan: '',
 
-    thisWeekWorks: [createWorkItem(), createWorkItem(), createWorkItem()],
+  lastWeekWorks: [createWorkItem(), createWorkItem(), createWorkItem()],
 
-    todo: '',
-    notes: '',
-  };
+  thisWeekWorks: [createWorkItem(), createWorkItem(), createWorkItem()],
+
+  todo: '',
+  notes: '',
+};
 
   weeklyModal.value = true;
 }
@@ -549,7 +551,7 @@ function workHasTask(work, taskId) {
       </div>
 
       <button v-if="tab === 'weekly'" class="add-weekly" @click="openWeekly">
-        ＋ 新增本週進度
+        ＋ 新增進度
       </button>
     </div>
 
@@ -705,7 +707,7 @@ function workHasTask(work, taskId) {
 
       <!-- <section class="weekly-main">
         <button class="primary full" @click="openWeekly">
-          ＋ 新增本週進度
+          ＋ 新增進度
         </button>
       </section> -->
     </div>
@@ -894,9 +896,14 @@ function workHasTask(work, taskId) {
 
     <TaskFormModal :visible="taskModal" :form="taskForm" :editing="editingTask" @close="taskModal = false"
       @save="saveTask" />
-
-    <WeeklyProgressModal :visible="weeklyModal" :form="weeklyForm" :tasks="projectTasks" @close="weeklyModal = false"
-      @save="saveWeekly" />
+      <WeeklyProgressModal
+  :visible="weeklyModal"
+  :form="weeklyForm"
+  :tasks="projectTasks"
+  :reports="props.reports"
+  @close="weeklyModal = false"
+  @save="saveWeekly"
+/>
 
     <LinkFormModal :visible="linkModal" :form="linkForm" @close="linkModal = false" @save="saveLink" />
   </div>

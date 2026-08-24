@@ -16,12 +16,39 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+
+  reports: {
+    type: Array,
+    default: () => [],
+  },
 })
 
 const emit = defineEmits([
   'close',
   'save',
 ])
+
+// ============================================================
+// 可選週次：目前週次前後各 2 週
+// ============================================================
+
+const weekOptions = computed(() => {
+  const currentWeek =
+    Number(
+      String(form.value.week || '')
+        .replace(/\D/g, '')
+    ) || 35
+
+  return [
+    currentWeek - 2,
+    currentWeek - 1,
+    currentWeek,
+    currentWeek + 1,
+    currentWeek + 2,
+  ]
+    .filter(week => week > 0)
+    .map(week => `W${week}`)
+})
 
 
 // ============================================================
@@ -273,6 +300,169 @@ function loadForm(
     notes:
       source.notes ||
       '',
+  }
+}
+
+function getWeekDates(weekNumber) {
+  const year = 2026
+
+  const jan4 = new Date(year, 0, 4)
+
+  const day =
+    jan4.getDay() || 7
+
+  const monday = new Date(jan4)
+
+  monday.setDate(
+    jan4.getDate() -
+    day +
+    1 +
+    (weekNumber - 1) * 7
+  )
+
+  const friday = new Date(monday)
+
+  friday.setDate(
+    monday.getDate() + 4
+  )
+
+  const formatDate = (date) => {
+    const y = date.getFullYear()
+    const m = String(
+      date.getMonth() + 1
+    ).padStart(2, '0')
+    const d = String(
+      date.getDate()
+    ).padStart(2, '0')
+
+    return `${y}-${m}-${d}`
+  }
+
+  return {
+    startDate: formatDate(monday),
+    endDate: formatDate(friday),
+  }
+}
+// ============================================================
+// 切換週次
+// ============================================================
+
+function changeWeek() {
+  const selectedWeek = form.value.week
+
+  console.log('切換週次:', selectedWeek)
+console.log('目前專案:', props.form.projectId)
+console.log('所有週報:', props.reports)
+
+
+  // 找目前專案的該週週報
+  const report = props.reports.find(report => {
+    return (
+      String(report.projectId) ===
+        String(props.form.projectId) &&
+      String(report.week) ===
+        String(selectedWeek)
+    )
+  })
+
+  if (report) {
+    // 該週已有資料 → 載入該週
+    loadForm(report)
+    return
+  }
+
+  // 該週沒有資料 → 建立新的空白表單
+  const weekNumber =
+    Number(
+      String(selectedWeek)
+        .replace(/\D/g, '')
+    )
+
+  const dates = getWeekDates(
+    weekNumber
+  )
+
+  function changeWeek() {
+  const selectedWeek = form.value.week
+
+  const report = props.reports.find(report => {
+    return (
+      String(report.projectId) ===
+        String(props.form.projectId) &&
+      String(report.week) ===
+        String(selectedWeek)
+    )
+  })
+
+  if (report) {
+    loadForm(report)
+    return
+  }
+
+  const weekNumber =
+    Number(
+      String(selectedWeek)
+        .replace(/\D/g, '')
+    )
+
+  const dates = getWeekDates(weekNumber)
+
+  form.value = {
+    id: null,
+
+    projectId:
+      props.form.projectId ?? null,
+
+    week: selectedWeek,
+
+    startDate: dates.startDate,
+    endDate: dates.endDate,
+
+    range:
+      `${dates.startDate} ~ ${dates.endDate}`,
+
+    lastWeekActual: '',
+    thisWeekPlan: '',
+
+    lastWeekWorks:
+      createDefaultWorks(),
+
+    thisWeekWorks:
+      createDefaultWorks(),
+
+    todo: '',
+    notes: '',
+  }
+}
+
+  form.value = {
+    id: null,
+
+    projectId:
+      props.form.projectId ?? null,
+
+    week: selectedWeek,
+
+    startDate:
+      dates.startDate,
+
+    endDate:
+      dates.endDate,
+
+    range:
+      `${dates.startDate} ~ ${dates.endDate}`,
+
+    lastWeekActual: '',
+    thisWeekPlan: '',
+
+    lastWeekWorks:
+      createDefaultWorks(),
+
+    thisWeekWorks:
+      createDefaultWorks(),
+
+    todo: '',
+    notes: '',
   }
 }
 
@@ -594,17 +784,25 @@ function close() {
 
             <label class="field">
 
-              <span>
-                週次
-              </span>
+<span>
+  週次
+</span>
 
-              <input
-                v-model="form.week"
-                type="text"
-                readonly
-              />
+<select
+  v-model="form.week"
+  class="week-select"
+  @change="changeWeek"
+>
+  <option
+    v-for="week in weekOptions"
+    :key="week"
+    :value="week"
+  >
+    {{ week }}
+  </option>
+</select>
 
-            </label>
+</label>
 
 
             <label class="field">

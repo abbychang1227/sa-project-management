@@ -32,6 +32,43 @@ const reports = ref(structuredClone(mockReports));
 // 從 Supabase 載入週報
 // ============================================================
 
+
+
+// ============================================================
+// 從 Supabase 載入專案
+// ============================================================
+
+async function loadProjects() {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('載入專案失敗:', error);
+    return;
+  }
+
+  projects.value = (data || []).map((project) => ({
+    id: project.id,
+    name: project.name || '',
+    customer: project.customer || '',
+    sa: project.sa || '',
+    developer: project.developer || '',
+    endDate: project.end_date || '',
+    status: project.status || '',
+    statusType: project.status_type || 'normal',
+    progress: Number(project.progress) || 0,
+
+    lastWeek: project.last_week || '',
+    thisWeek: project.this_week || '',
+    todo: project.todo || '',
+    notes: project.notes || '',
+  }));
+
+  console.log('Supabase 專案載入完成:', projects.value);
+}
+
 async function loadWeeklyReports() {
   const { data: reportData, error: reportError } = await supabase
     .from('weekly_reports')
@@ -2029,6 +2066,7 @@ function saveWorkbook(workbook, name) {
 // ============================================================
 
 function exportProjectExcel() {
+  console.log('🔥 exportProjectExcel 被呼叫了');
   const headers = [
     '專案',
     '客戶／單位',
@@ -3094,6 +3132,7 @@ function exportGanttExcel(projectId = 'all') {
 // ============================================================
 
 onMounted(() => {
+  loadProjects();
   loadWeeklyReports();
   loadGanttTasks();
   loadGanttTemplates();
@@ -3128,13 +3167,13 @@ defineExpose({
       <!-- 專案總覽 -->
 
       <ProjectOverview
-        v-if="currentPage === 'overview'"
-        :projects="overviewProjects"
-        :reports="reports"
-        :tasks="tasks"
-        @open="openProject"
-        @save="saveProject"
-      />
+  v-if="currentPage === 'overview'"
+  :projects="overviewProjects"
+  :reports="reports"
+  :tasks="tasks"
+  @open="openProject"
+  @export="exportProjectExcel"
+/>
 
       <!-- 全部專案甘特 -->
       <AllGantt
