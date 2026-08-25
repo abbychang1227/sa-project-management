@@ -989,6 +989,7 @@ td {
 }
 
 .work-description {
+  white-space: pre-line;
   display: flex;
   align-items: flex-start;
   gap: 5px;

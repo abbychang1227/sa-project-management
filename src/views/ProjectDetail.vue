@@ -788,107 +788,6 @@ function workHasTask(work, taskId) {
     </div>
 
     <!-- ======================================================
-       甘特詳細 Modal
-  ====================================================== -->
-
-    <!-- <div
-      v-if="selectedTask"
-      class="modal-backdrop"
-      @click.self="selectedTask = null"
-    >
-      <div class="task-detail">
-        <div class="detail-head">
-          <div>
-            <span> 甘特項目 </span>
-
-            <h3>
-              {{ selectedTask.name }}
-            </h3>
-          </div>
-
-          <button class="close" @click="selectedTask = null">×</button>
-        </div>
-
-        <div class="detail-grid">
-          <div>
-            <span>開始日期</span>
-            <strong>
-              {{ selectedTask.start }}
-            </strong>
-          </div>
-
-          <div>
-            <span>完成日期</span>
-            <strong>
-              {{ selectedTask.end }}
-            </strong>
-          </div>
-
-          <div>
-            <span>完成率</span>
-            <strong> {{ selectedTask.progress }}% </strong>
-          </div>
-
-          <div>
-            <span>狀態</span>
-            <strong>
-              {{ selectedTask.status }}
-            </strong>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <span> 工作說明 </span>
-
-          <p>
-            {{ selectedTask.description || '目前尚未填寫工作說明。' }}
-          </p>
-        </div>
-
-        <div class="detail-section">
-          <span> 關聯週報 </span>
-
-          <div v-if="linkedReports.length" class="linked-reports">
-            <div v-for="r in linkedReports" :key="r.id" class="linked-report">
-              <div>
-                <b>
-                  {{ r.week }}
-                </b>
-
-                <span>
-                  {{ r.range }}
-                </span>
-              </div>
-
-              <p
-                v-for="w in [
-                  ...(r.lastWeekWorks || []),
-                  ...(r.thisWeekWorks || []),
-                  ...(r.works || []),
-                ].filter((x) => workHasTask(x, selectedTask.id))"
-                :key="w.id"
-              >
-                {{ w.description }}
-              </p>
-            </div>
-          </div>
-
-          <p v-else class="muted">目前尚無週報工作關聯此甘特項目。</p>
-        </div>
-
-        <button
-          class="primary full"
-          @click="
-            openTask(selectedTask);
-            selectedTask = null;
-          "
-        >
-          編輯此甘特項目
-        </button>
-      </div>
-    </div> -->
-
-    <!-- ======================================================
        Modals
   ====================================================== -->
     <TaskDetailModal :visible="!!selectedTask" :task="selectedTask" :linked-reports="linkedReports"
@@ -1293,6 +1192,7 @@ function workHasTask(work, taskId) {
   color: var(--pm-text);
   font-size: 17px;
   line-height: 1.55;
+  white-space: pre-line;
 }
 
 .gantt-tag {

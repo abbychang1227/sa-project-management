@@ -1,7 +1,7 @@
 <script setup>
 
 
-import { ref, computed, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { supabase } from './lib/supabase';
 import * as XLSX from 'xlsx-js-style';
 
@@ -207,6 +207,8 @@ const projectDetailRef = ref(null);
 
 const currentPage = ref('overview');
 const selectedProjectId = ref(null);
+
+
 
 const showProjectModal = ref(false);
 const editingProject = ref(false);
@@ -1162,21 +1164,7 @@ async function editWeekly(form) {
     return;
   }
 
-  const { data: linkData, error: linkError } = await supabase
-  .from('project_links')
-  .select('*')
-  .order('id', { ascending: true });
 
-if (linkError) {
-  console.error('載入雲端資料失敗:', linkError);
-} else {
-  links.value = (linkData || []).map((link) => ({
-    id: link.id,
-    projectId: link.project_id,
-    name: link.name,
-    url: link.url,
-  }));
-}
 
 
   // ==========================================================
@@ -1530,6 +1518,8 @@ async function deleteLink(link) {
     (x) => String(x.id) !== String(linkId)
   );
 }
+
+
 
 // ============================================================
 // 甘特模板
@@ -2214,193 +2204,104 @@ function exportProjectExcel() {
 // 甘特 Excel
 // ============================================================
 
-// 甘特月份
-const ganttMonths = [
-  {
-    key: '2026-06',
-    label: '2026/06',
-  },
-  {
-    key: '2026-07',
-    label: '2026/07',
-  },
-  {
-    key: '2026-08',
-    label: '2026/08',
-  },
-  {
-    key: '2026-09',
-    label: '2026/09',
-  },
-  {
-    key: '2026-10',
-    label: '2026/10',
-  },
-];
+// ============================================================
+// 甘特 Excel
+// ============================================================
 
-// 每個月份固定四個區間
-const ganttPeriods = [
-  {
-    month: '2026-06',
-    day: '01',
-    start: 1,
-    end: 9,
-  },
-  {
-    month: '2026-06',
-    day: '10',
-    start: 10,
-    end: 19,
-  },
-  {
-    month: '2026-06',
-    day: '20',
-    start: 20,
-    end: 29,
-  },
-  {
-    month: '2026-06',
-    day: '30',
-    start: 30,
-    end: 30,
-  },
+// ============================================================
+// 取得 Excel 甘特圖的月份
+//
+// 規則跟畫面上的甘特圖一致：
+//
+// 最早任務月份 → 最晚任務月份
+//
+// 例如：
+// 2026-04-15 ~ 2026-10-31
+//
+// 就會產生：
+// 2026/04
+// 2026/05
+// 2026/06
+// 2026/07
+// 2026/08
+// 2026/09
+// 2026/10
+// ============================================================
 
-  {
-    month: '2026-07',
-    day: '01',
-    start: 1,
-    end: 9,
-  },
-  {
-    month: '2026-07',
-    day: '10',
-    start: 10,
-    end: 19,
-  },
-  {
-    month: '2026-07',
-    day: '20',
-    start: 20,
-    end: 29,
-  },
-  {
-    month: '2026-07',
-    day: '30',
-    start: 30,
-    end: 31,
-  },
+function getGanttExportMonths(exportTasks) {
+  const dates = exportTasks
+    .flatMap((task) => [
+      new Date(task.start),
+      new Date(task.end),
+    ])
+    .filter(
+      (date) =>
+        !Number.isNaN(date.getTime())
+    );
 
-  {
-    month: '2026-08',
-    day: '01',
-    start: 1,
-    end: 9,
-  },
-  {
-    month: '2026-08',
-    day: '10',
-    start: 10,
-    end: 19,
-  },
-  {
-    month: '2026-08',
-    day: '20',
-    start: 20,
-    end: 29,
-  },
-  {
-    month: '2026-08',
-    day: '30',
-    start: 30,
-    end: 31,
-  },
-
-  {
-    month: '2026-09',
-    day: '01',
-    start: 1,
-    end: 9,
-  },
-  {
-    month: '2026-09',
-    day: '10',
-    start: 10,
-    end: 19,
-  },
-  {
-    month: '2026-09',
-    day: '20',
-    start: 20,
-    end: 29,
-  },
-  {
-    month: '2026-09',
-    day: '30',
-    start: 30,
-    end: 30,
-  },
-
-  {
-    month: '2026-10',
-    day: '01',
-    start: 1,
-    end: 9,
-  },
-  {
-    month: '2026-10',
-    day: '10',
-    start: 10,
-    end: 19,
-  },
-  {
-    month: '2026-10',
-    day: '20',
-    start: 20,
-    end: 29,
-  },
-  {
-    month: '2026-10',
-    day: '30',
-    start: 30,
-    end: 31,
-  },
-];
-
-// 日期轉成 Date
-function parseDate(value) {
-  if (!value) return null;
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
+  if (dates.length === 0) {
+    return [];
   }
 
-  return date;
-}
+  const minDate = new Date(
+    Math.min(
+      ...dates.map((date) =>
+        date.getTime()
+      )
+    )
+  );
 
-// 判斷 task 是否涵蓋某一個甘特區間
-function taskOverlapsPeriod(task, period) {
-  const taskStart = parseDate(task.start);
-  const taskEnd = parseDate(task.end);
+  const maxDate = new Date(
+    Math.max(
+      ...dates.map((date) =>
+        date.getTime()
+      )
+    )
+  );
 
-  if (!taskStart || !taskEnd) {
-    return false;
+  // 從最早任務的月份開始
+  const current = new Date(
+    minDate.getFullYear(),
+    minDate.getMonth(),
+    1
+  );
+
+  // 到最晚任務所在月份
+  const end = new Date(
+    maxDate.getFullYear(),
+    maxDate.getMonth(),
+    1
+  );
+
+  const result = [];
+
+  while (current <= end) {
+    const year =
+      current.getFullYear();
+
+    const month =
+      current.getMonth() + 1;
+
+    result.push({
+      key:
+        `${year}-${String(month).padStart(2, '0')}`,
+
+      year,
+
+      month,
+
+      label:
+        `${year}/${String(month).padStart(2, '0')}`,
+    });
+
+    current.setMonth(
+      current.getMonth() + 1
+    );
   }
 
-  const [year, month] = period.month.split('-').map(Number);
-
-  const periodStart = new Date(year, month - 1, period.start);
-
-  const periodEnd = new Date(year, month - 1, period.end);
-
-  return taskStart <= periodEnd && taskEnd >= periodStart;
+  return result;
 }
 
-// 取得月份索引
-function getMonthColumnIndex(monthKey) {
-  return ganttMonths.findIndex((month) => month.key === monthKey);
-}
 
 // ============================================================
 // 甘特 Excel 匯出
@@ -2408,20 +2309,21 @@ function getMonthColumnIndex(monthKey) {
 // projectId:
 //   'all' / undefined = 全部專案
 //   指定 ID = 單一專案
+//   也支援傳入 project 物件
 // ============================================================
 
 function exportGanttExcel(projectId = 'all') {
+
   // ============================================================
   // 1. 判斷匯出範圍
-  //
-  // all / null / undefined = 全部專案
-  // 指定 ID = 單一專案
-  // 也支援傳入 project 物件
   // ============================================================
 
   let selectedId = projectId;
 
-  if (projectId && typeof projectId === 'object') {
+  if (
+    projectId &&
+    typeof projectId === 'object'
+  ) {
     selectedId = projectId.id;
   }
 
@@ -2432,27 +2334,34 @@ function exportGanttExcel(projectId = 'all') {
     selectedId === 'all'
       ? [...projects.value]
       : projects.value.filter(
-          (project) => String(project.id) === String(selectedId)
+          (project) =>
+            String(project.id) ===
+            String(selectedId)
         );
 
   // ============================================================
-  // 2. 找出甘特資料
-  //
-  // 不使用嚴格 ===，避免 projectId 一邊是 number、
-  // 一邊是 string 時造成查不到資料。
+  // 2. 找出要匯出的甘特資料
   // ============================================================
 
   const dataRows = [];
 
   exportProjects.forEach((project) => {
+
     tasks.value
-      .filter((task) => String(task.projectId) === String(project.id))
+      .filter(
+        (task) =>
+          String(task.projectId) ===
+          String(project.id)
+      )
       .forEach((task) => {
+
         dataRows.push({
           project,
           task,
         });
+
       });
+
   });
 
   if (dataRows.length === 0) {
@@ -2460,66 +2369,190 @@ function exportGanttExcel(projectId = 'all') {
     return;
   }
 
+
   // ============================================================
-  // 3. 甘特時間軸
+  // 3. ★ 動態取得月份
+  //
+  // 不再固定 2026/06～2026/10
+  //
+  // 而是根據目前要匯出的 task 自動決定。
   // ============================================================
 
-  const ganttMonths = [
-    { year: 2026, month: 6, label: '2026/06' },
-    { year: 2026, month: 7, label: '2026/07' },
-    { year: 2026, month: 8, label: '2026/08' },
-    { year: 2026, month: 9, label: '2026/09' },
-    { year: 2026, month: 10, label: '2026/10' },
+  const exportTasks =
+    dataRows.map(
+      (item) => item.task
+    );
+
+  const ganttMonths =
+    getGanttExportMonths(
+      exportTasks
+    );
+
+  if (ganttMonths.length === 0) {
+    alert('甘特項目沒有有效的日期。');
+    return;
+  }
+
+
+  // ============================================================
+  // 4. 每個月份固定四個區間
+  //
+  // 01 / 10 / 20 / 30
+  // ============================================================
+
+  const periods = [
+    '01',
+    '10',
+    '20',
+    '30',
   ];
 
-  const periods = ['01', '10', '20', '30'];
+  const ganttColumnCount =
+    ganttMonths.length *
+    periods.length;
 
-  const ganttColumnCount = ganttMonths.length * periods.length;
 
   // ============================================================
-  // 4. 判斷甘特項目是否涵蓋某一區間
+  // 5. 判斷 task 是否涵蓋某一個區間
   // ============================================================
 
-  function isInPeriod(task, year, month, periodIndex) {
-    if (!task || !task.start || !task.end) {
+  function isInPeriod(
+    task,
+    year,
+    month,
+    periodIndex
+  ) {
+
+    if (
+      !task ||
+      !task.start ||
+      !task.end
+    ) {
       return false;
     }
 
-    const start = new Date(`${task.start}T00:00:00`);
+    const start =
+      new Date(
+        `${task.start}T00:00:00`
+      );
 
-    const end = new Date(`${task.end}T23:59:59`);
+    const end =
+      new Date(
+        `${task.end}T23:59:59`
+      );
 
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    if (
+      Number.isNaN(
+        start.getTime()
+      ) ||
+      Number.isNaN(
+        end.getTime()
+      )
+    ) {
       return false;
     }
 
     let periodStart;
     let periodEnd;
 
+    // 01～09
     if (periodIndex === 0) {
-      periodStart = new Date(year, month - 1, 1);
 
-      periodEnd = new Date(year, month - 1, 9, 23, 59, 59);
-    } else if (periodIndex === 1) {
-      periodStart = new Date(year, month - 1, 10);
+      periodStart =
+        new Date(
+          year,
+          month - 1,
+          1
+        );
 
-      periodEnd = new Date(year, month - 1, 19, 23, 59, 59);
-    } else if (periodIndex === 2) {
-      periodStart = new Date(year, month - 1, 20);
+      periodEnd =
+        new Date(
+          year,
+          month - 1,
+          9,
+          23,
+          59,
+          59
+        );
 
-      periodEnd = new Date(year, month - 1, 29, 23, 59, 59);
-    } else {
-      periodStart = new Date(year, month - 1, 30);
-
-      // 當月最後一天
-      periodEnd = new Date(year, month, 0, 23, 59, 59);
     }
 
-    return start <= periodEnd && end >= periodStart;
+    // 10～19
+    else if (periodIndex === 1) {
+
+      periodStart =
+        new Date(
+          year,
+          month - 1,
+          10
+        );
+
+      periodEnd =
+        new Date(
+          year,
+          month - 1,
+          19,
+          23,
+          59,
+          59
+        );
+
+    }
+
+    // 20～29
+    else if (periodIndex === 2) {
+
+      periodStart =
+        new Date(
+          year,
+          month - 1,
+          20
+        );
+
+      periodEnd =
+        new Date(
+          year,
+          month - 1,
+          29,
+          23,
+          59,
+          59
+        );
+
+    }
+
+    // 30～月底
+    else {
+
+      periodStart =
+        new Date(
+          year,
+          month - 1,
+          30
+        );
+
+      // 自動取得該月份最後一天
+      periodEnd =
+        new Date(
+          year,
+          month,
+          0,
+          23,
+          59,
+          59
+        );
+
+    }
+
+    return (
+      start <= periodEnd &&
+      end >= periodStart
+    );
   }
 
+
   // ============================================================
-  // 5. Excel 欄位
+  // 6. Excel 表頭
   // ============================================================
 
   const baseHeaders = [
@@ -2531,78 +2564,146 @@ function exportGanttExcel(projectId = 'all') {
     '狀態',
   ];
 
-  // 第一列：月份
+
+  // 第一列
   const row1 = [
     ...baseHeaders,
-    ...ganttMonths.flatMap((month) => [month.label, '', '', '']),
+
+    ...ganttMonths.flatMap(
+      (month) => [
+        month.label,
+        '',
+        '',
+        '',
+      ]
+    ),
   ];
 
-  // 第二列：01 / 10 / 20 / 30
-  const row2 = ['', '', '', '', '', '', ...ganttMonths.flatMap(() => periods)];
+
+  // 第二列
+  const row2 = [
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+
+    ...ganttMonths.flatMap(
+      () => periods
+    ),
+  ];
+
 
   // ============================================================
-  // 6. 重要：
-  //
-  // 這裡一次把「表頭 + 所有資料列 + 20 個甘特欄位」
-  // 全部建立出來。
-  //
-  // 上一版空白的原因就是只建立了 header，
-  // 後面才寫入不存在的 cell。
+  // 7. 建立資料
   // ============================================================
 
-  const matrix = [row1, row2];
+  const matrix = [
+    row1,
+    row2,
+  ];
 
-  dataRows.forEach(({ project, task }) => {
-    matrix.push([
-      project.name || '',
-      task.name || '',
-      task.start || '',
-      task.end || '',
-      `${Number(task.progress || 0)}%`,
-      task.status || '',
-      ...Array(ganttColumnCount).fill(''),
-    ]);
-  });
 
-  const ws = XLSX.utils.aoa_to_sheet(matrix);
+  dataRows.forEach(
+    ({ project, task }) => {
+
+      matrix.push([
+        project.name || '',
+
+        task.name || '',
+
+        task.start || '',
+
+        task.end || '',
+
+        `${Number(
+          task.progress || 0
+        )}%`,
+
+        task.status || '',
+
+        ...Array(
+          ganttColumnCount
+        ).fill(''),
+      ]);
+
+    }
+  );
+
+
+  const ws =
+    XLSX.utils.aoa_to_sheet(
+      matrix
+    );
+
 
   // ============================================================
-  // 7. 顏色
+  // 8. 顏色
   // ============================================================
 
   const colors = {
     header: '446F8F',
-    headerLight: 'E9F0F3',
+
+    headerLight:
+      'E9F0F3',
+
     text: '253746',
-    border: 'C8D6DC',
-    monthBorder: '8EA8B7',
-    emptyGantt: 'F1F5F6',
-    gantt: '6E91AE',
-    white: 'FFFFFF',
-    success: '5B9279',
-    normal: '446F8F',
-    paused: '7D858A',
+
+    border:
+      'C8D6DC',
+
+    monthBorder:
+      '8EA8B7',
+
+    emptyGantt:
+      'F1F5F6',
+
+    gantt:
+      '6E91AE',
+
+    white:
+      'FFFFFF',
+
+    success:
+      '5B9279',
+
+    normal:
+      '446F8F',
+
+    paused:
+      '7D858A',
   };
+
 
   const thinBorder = {
     style: 'thin',
+
     color: {
       rgb: colors.border,
     },
   };
 
+
   const monthBorder = {
     style: 'medium',
+
     color: {
       rgb: colors.monthBorder,
     },
   };
 
+
   // ============================================================
-  // 8. 第一列樣式
+  // 9. 第一列月份
   // ============================================================
 
-  for (let column = 0; column < row1.length; column++) {
+  for (
+    let column = 0;
+    column < row1.length;
+    column++
+  ) {
+
     const cell =
       ws[
         XLSX.utils.encode_cell({
@@ -2614,6 +2715,7 @@ function exportGanttExcel(projectId = 'all') {
     if (!cell) continue;
 
     cell.s = {
+
       fill: {
         fgColor: {
           rgb: colors.header,
@@ -2624,13 +2726,18 @@ function exportGanttExcel(projectId = 'all') {
         color: {
           rgb: colors.white,
         },
+
         bold: true,
+
         sz: 12,
       },
 
       alignment: {
-        horizontal: 'center',
-        vertical: 'center',
+        horizontal:
+          'center',
+
+        vertical:
+          'center',
       },
 
       border: {
@@ -2639,14 +2746,22 @@ function exportGanttExcel(projectId = 'all') {
         left: thinBorder,
         right: thinBorder,
       },
+
     };
+
   }
 
+
   // ============================================================
-  // 9. 第二列日期樣式
+  // 10. 第二列 01 / 10 / 20 / 30
   // ============================================================
 
-  for (let column = 0; column < row2.length; column++) {
+  for (
+    let column = 0;
+    column < row2.length;
+    column++
+  ) {
+
     const cell =
       ws[
         XLSX.utils.encode_cell({
@@ -2658,23 +2773,31 @@ function exportGanttExcel(projectId = 'all') {
     if (!cell) continue;
 
     cell.s = {
+
       fill: {
         fgColor: {
-          rgb: colors.headerLight,
+          rgb:
+            colors.headerLight,
         },
       },
 
       font: {
         color: {
-          rgb: colors.header,
+          rgb:
+            colors.header,
         },
+
         bold: true,
+
         sz: 10,
       },
 
       alignment: {
-        horizontal: 'center',
-        vertical: 'center',
+        horizontal:
+          'center',
+
+        vertical:
+          'center',
       },
 
       border: {
@@ -2683,343 +2806,575 @@ function exportGanttExcel(projectId = 'all') {
         left: thinBorder,
         right: thinBorder,
       },
+
     };
+
   }
 
+
   // ============================================================
-  // 10. 合併月份
+  // 11. 合併儲存格
   // ============================================================
 
   ws['!merges'] = [];
 
+
   // A:F 垂直合併
-  for (let column = 0; column < 6; column++) {
+  for (
+    let column = 0;
+    column < 6;
+    column++
+  ) {
+
     ws['!merges'].push({
+
       s: {
         r: 0,
         c: column,
       },
+
       e: {
         r: 1,
         c: column,
       },
+
     });
+
   }
 
-  // 每 4 格為一個月份
-  ganttMonths.forEach((month, monthIndex) => {
-    const startColumn = 6 + monthIndex * 4;
 
-    const endColumn = startColumn + 3;
+  // 每 4 格合併一個月份
+  ganttMonths.forEach(
+    (month, monthIndex) => {
 
-    ws['!merges'].push({
-      s: {
-        r: 0,
-        c: startColumn,
-      },
-      e: {
-        r: 0,
-        c: endColumn,
-      },
-    });
+      const startColumn =
+        6 +
+        monthIndex * 4;
 
-    const monthCell =
-      ws[
-        XLSX.utils.encode_cell({
+      const endColumn =
+        startColumn + 3;
+
+
+      ws['!merges'].push({
+
+        s: {
           r: 0,
           c: startColumn,
-        })
-      ];
-
-    if (monthCell) {
-      monthCell.v = month.label;
-      monthCell.s = {
-        fill: {
-          fgColor: {
-            rgb: colors.header,
-          },
         },
 
-        font: {
-          color: {
-            rgb: colors.white,
-          },
-          bold: true,
-          sz: 12,
+        e: {
+          r: 0,
+          c: endColumn,
         },
 
-        alignment: {
-          horizontal: 'center',
-          vertical: 'center',
-        },
-
-        border: {
-          top: monthBorder,
-          bottom: monthBorder,
-          left: monthBorder,
-          right: monthBorder,
-        },
-      };
-    }
-  });
-
-  // ============================================================
-  // 11. 資料列
-  // ============================================================
-
-  dataRows.forEach(({ project, task }, index) => {
-    const row = index + 2;
-
-    // --------------------------------------------------------
-    // 基本資料
-    // --------------------------------------------------------
-
-    const values = [
-      project.name || '',
-      task.name || '',
-      task.start || '',
-      task.end || '',
-      `${Number(task.progress || 0)}%`,
-      task.status || '',
-    ];
-
-    values.forEach((value, column) => {
-      const cell =
-        ws[
-          XLSX.utils.encode_cell({
-            r: row,
-            c: column,
-          })
-        ];
-
-      if (!cell) return;
-
-      cell.v = value;
-
-      cell.s = {
-        font: {
-          color: {
-            rgb: colors.text,
-          },
-
-          bold: column === 1 || column === 4,
-
-          sz: 11,
-        },
-
-        alignment: {
-          vertical: 'center',
-          wrapText: true,
-        },
-
-        border: {
-          top: thinBorder,
-          bottom: thinBorder,
-          left: thinBorder,
-          right: thinBorder,
-        },
-      };
-    });
-
-    // --------------------------------------------------------
-    // 完成率
-    // --------------------------------------------------------
-
-    const progressCell =
-      ws[
-        XLSX.utils.encode_cell({
-          r: row,
-          c: 4,
-        })
-      ];
-
-    if (progressCell) {
-      progressCell.s = {
-        ...progressCell.s,
-
-        font: {
-          color: {
-            rgb: colors.normal,
-          },
-
-          bold: true,
-          sz: 11,
-        },
-      };
-    }
-
-    // --------------------------------------------------------
-    // 狀態
-    // --------------------------------------------------------
-
-    let statusColor = colors.paused;
-
-    if (task.status === '已完成') {
-      statusColor = colors.success;
-    } else if (task.status === '進行中') {
-      statusColor = colors.normal;
-    }
-
-    const statusCell =
-      ws[
-        XLSX.utils.encode_cell({
-          r: row,
-          c: 5,
-        })
-      ];
-
-    if (statusCell) {
-      statusCell.s = {
-        ...statusCell.s,
-
-        font: {
-          color: {
-            rgb: statusColor,
-          },
-
-          bold: true,
-          sz: 11,
-        },
-      };
-    }
-
-    // --------------------------------------------------------
-    // 甘特區
-    // --------------------------------------------------------
-
-    const activeColumns = [];
-
-    ganttMonths.forEach((month, monthIndex) => {
-      periods.forEach((_, periodIndex) => {
-        const column = 6 + monthIndex * 4 + periodIndex;
-
-        const active = isInPeriod(task, month.year, month.month, periodIndex);
-
-        const cell =
-          ws[
-            XLSX.utils.encode_cell({
-              r: row,
-              c: column,
-            })
-          ];
-
-        if (!cell) return;
-
-        // 每個月第一格加粗左線
-        const isMonthStart = periodIndex === 0;
-
-        if (active) {
-          activeColumns.push(column);
-
-          cell.v = '';
-
-          cell.s = {
-            fill: {
-              fgColor: {
-                rgb: colors.gantt,
-              },
-            },
-
-            font: {
-              color: {
-                rgb: colors.white,
-              },
-              bold: true,
-              sz: 10,
-            },
-
-            alignment: {
-              horizontal: 'center',
-              vertical: 'center',
-            },
-
-            border: {
-              top: thinBorder,
-              bottom: thinBorder,
-              left: isMonthStart ? monthBorder : thinBorder,
-              right: thinBorder,
-            },
-          };
-        } else {
-          cell.v = '';
-
-          cell.s = {
-            fill: {
-              fgColor: {
-                rgb: colors.emptyGantt,
-              },
-            },
-
-            alignment: {
-              horizontal: 'center',
-              vertical: 'center',
-            },
-
-            border: {
-              top: thinBorder,
-              bottom: thinBorder,
-              left: isMonthStart ? monthBorder : thinBorder,
-              right: thinBorder,
-            },
-          };
-        }
       });
-    });
 
-    // --------------------------------------------------------
-    // 完成率只顯示一次
-    //
-    // 不再：
-    // 55% 55% 55% 55%
-    //
-    // 而是整條甘特區只顯示一個 55%
-    // --------------------------------------------------------
 
-    if (activeColumns.length > 0) {
-      const middleIndex = Math.floor(activeColumns.length / 2);
-
-      const progressColumn = activeColumns[middleIndex];
-
-      const progressBarCell =
+      const monthCell =
         ws[
           XLSX.utils.encode_cell({
-            r: row,
-            c: progressColumn,
+            r: 0,
+            c: startColumn,
           })
         ];
 
-      if (progressBarCell) {
-        progressBarCell.v = `${Number(task.progress || 0)}%`;
 
-        progressBarCell.s = {
-          ...progressBarCell.s,
+      if (monthCell) {
+
+        monthCell.v =
+          month.label;
+
+        monthCell.s = {
+
+          fill: {
+            fgColor: {
+              rgb:
+                colors.header,
+            },
+          },
 
           font: {
             color: {
-              rgb: colors.white,
+              rgb:
+                colors.white,
             },
 
             bold: true,
-            sz: 10,
+
+            sz: 12,
           },
 
           alignment: {
-            horizontal: 'center',
-            vertical: 'center',
+            horizontal:
+              'center',
+
+            vertical:
+              'center',
           },
+
+          border: {
+            top: monthBorder,
+            bottom: monthBorder,
+            left: monthBorder,
+            right: monthBorder,
+          },
+
         };
+
       }
+
     }
-  });
+  );
+
 
   // ============================================================
-  // 12. 每個月份第一格再加強分隔線
+  // 12. 資料列
   // ============================================================
 
-  for (let monthIndex = 0; monthIndex < ganttMonths.length; monthIndex++) {
-    const column = 6 + monthIndex * 4;
+  dataRows.forEach(
+    ({ project, task }, index) => {
 
-    // 第二列日期
+      const row =
+        index + 2;
+
+
+      const values = [
+        project.name || '',
+
+        task.name || '',
+
+        task.start || '',
+
+        task.end || '',
+
+        `${Number(
+          task.progress || 0
+        )}%`,
+
+        task.status || '',
+      ];
+
+
+      values.forEach(
+        (value, column) => {
+
+          const cell =
+            ws[
+              XLSX.utils.encode_cell({
+                r: row,
+                c: column,
+              })
+            ];
+
+          if (!cell) return;
+
+          cell.v = value;
+
+          cell.s = {
+
+            font: {
+
+              color: {
+                rgb:
+                  colors.text,
+              },
+
+              bold:
+                column === 1 ||
+                column === 4,
+
+              sz: 11,
+
+            },
+
+            alignment: {
+
+              vertical:
+                'center',
+
+              wrapText:
+                true,
+
+            },
+
+            border: {
+
+              top:
+                thinBorder,
+
+              bottom:
+                thinBorder,
+
+              left:
+                thinBorder,
+
+              right:
+                thinBorder,
+
+            },
+
+          };
+
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // 完成率
+      // --------------------------------------------------------
+
+      const progressCell =
+        ws[
+          XLSX.utils.encode_cell({
+            r: row,
+            c: 4,
+          })
+        ];
+
+
+      if (progressCell) {
+
+        progressCell.s = {
+
+          ...progressCell.s,
+
+          font: {
+
+            color: {
+              rgb:
+                colors.normal,
+            },
+
+            bold: true,
+
+            sz: 11,
+
+          },
+
+        };
+
+      }
+
+
+      // --------------------------------------------------------
+      // 狀態
+      // --------------------------------------------------------
+
+      let statusColor =
+        colors.paused;
+
+
+      if (
+        task.status ===
+        '已完成'
+      ) {
+
+        statusColor =
+          colors.success;
+
+      }
+      else if (
+        task.status ===
+        '進行中'
+      ) {
+
+        statusColor =
+          colors.normal;
+
+      }
+
+
+      const statusCell =
+        ws[
+          XLSX.utils.encode_cell({
+            r: row,
+            c: 5,
+          })
+        ];
+
+
+      if (statusCell) {
+
+        statusCell.s = {
+
+          ...statusCell.s,
+
+          font: {
+
+            color: {
+              rgb:
+                statusColor,
+            },
+
+            bold: true,
+
+            sz: 11,
+
+          },
+
+        };
+
+      }
+
+
+      // --------------------------------------------------------
+      // 甘特區
+      // --------------------------------------------------------
+
+      const activeColumns = [];
+
+
+      ganttMonths.forEach(
+        (month, monthIndex) => {
+
+          periods.forEach(
+            (_, periodIndex) => {
+
+              const column =
+                6 +
+                monthIndex * 4 +
+                periodIndex;
+
+
+              const active =
+                isInPeriod(
+                  task,
+
+                  month.year,
+
+                  month.month,
+
+                  periodIndex
+                );
+
+
+              const cell =
+                ws[
+                  XLSX.utils.encode_cell({
+                    r: row,
+                    c: column,
+                  })
+                ];
+
+
+              if (!cell) return;
+
+
+              const isMonthStart =
+                periodIndex === 0;
+
+
+              if (active) {
+
+                activeColumns.push(
+                  column
+                );
+
+
+                cell.v = '';
+
+
+                cell.s = {
+
+                  fill: {
+
+                    fgColor: {
+                      rgb:
+                        colors.gantt,
+                    },
+
+                  },
+
+                  font: {
+
+                    color: {
+                      rgb:
+                        colors.white,
+                    },
+
+                    bold: true,
+
+                    sz: 10,
+
+                  },
+
+                  alignment: {
+
+                    horizontal:
+                      'center',
+
+                    vertical:
+                      'center',
+
+                  },
+
+                  border: {
+
+                    top:
+                      thinBorder,
+
+                    bottom:
+                      thinBorder,
+
+                    left:
+                      isMonthStart
+                        ? monthBorder
+                        : thinBorder,
+
+                    right:
+                      thinBorder,
+
+                  },
+
+                };
+
+              }
+              else {
+
+                cell.v = '';
+
+
+                cell.s = {
+
+                  fill: {
+
+                    fgColor: {
+                      rgb:
+                        colors.emptyGantt,
+                    },
+
+                  },
+
+                  alignment: {
+
+                    horizontal:
+                      'center',
+
+                    vertical:
+                      'center',
+
+                  },
+
+                  border: {
+
+                    top:
+                      thinBorder,
+
+                    bottom:
+                      thinBorder,
+
+                    left:
+                      isMonthStart
+                        ? monthBorder
+                        : thinBorder,
+
+                    right:
+                      thinBorder,
+
+                  },
+
+                };
+
+              }
+
+            }
+          );
+
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // 完成率只顯示一次
+      // --------------------------------------------------------
+
+      if (
+        activeColumns.length > 0
+      ) {
+
+        const middleIndex =
+          Math.floor(
+            activeColumns.length / 2
+          );
+
+
+        const progressColumn =
+          activeColumns[
+            middleIndex
+          ];
+
+
+        const progressBarCell =
+          ws[
+            XLSX.utils.encode_cell({
+              r: row,
+              c:
+                progressColumn,
+            })
+          ];
+
+
+        if (progressBarCell) {
+
+          progressBarCell.v =
+            `${Number(
+              task.progress || 0
+            )}%`;
+
+
+          progressBarCell.s = {
+
+            ...progressBarCell.s,
+
+            font: {
+
+              color: {
+                rgb:
+                  colors.white,
+              },
+
+              bold: true,
+
+              sz: 10,
+
+            },
+
+            alignment: {
+
+              horizontal:
+                'center',
+
+              vertical:
+                'center',
+
+            },
+
+          };
+
+        }
+
+      }
+
+    }
+  );
+
+
+  // ============================================================
+  // 13. 每個月份第一格加強分隔線
+  // ============================================================
+
+  for (
+    let monthIndex = 0;
+    monthIndex <
+    ganttMonths.length;
+    monthIndex++
+  ) {
+
+    const column =
+      6 +
+      monthIndex * 4;
+
+
     const headerCell =
       ws[
         XLSX.utils.encode_cell({
@@ -3028,19 +3383,33 @@ function exportGanttExcel(projectId = 'all') {
         })
       ];
 
+
     if (headerCell) {
+
       headerCell.s = {
+
         ...headerCell.s,
 
         border: {
+
           ...(headerCell.s?.border || {}),
-          left: monthBorder,
+
+          left:
+            monthBorder,
+
         },
+
       };
+
     }
 
-    // 所有資料列
-    for (let row = 2; row < dataRows.length + 2; row++) {
+
+    for (
+      let row = 2;
+      row < dataRows.length + 2;
+      row++
+    ) {
+
       const cell =
         ws[
           XLSX.utils.encode_cell({
@@ -3049,82 +3418,127 @@ function exportGanttExcel(projectId = 'all') {
           })
         ];
 
+
       if (!cell) continue;
 
+
       cell.s = {
+
         ...cell.s,
 
         border: {
+
           ...(cell.s?.border || {}),
-          left: monthBorder,
+
+          left:
+            monthBorder,
+
         },
+
       };
+
     }
+
   }
 
+
   // ============================================================
-  // 13. 欄寬
+  // 14. 欄寬
   // ============================================================
 
   ws['!cols'] = [
+
     { wch: 28 },
+
     { wch: 32 },
+
     { wch: 15 },
+
     { wch: 15 },
+
     { wch: 11 },
+
     { wch: 12 },
 
-    ...Array.from({ length: ganttColumnCount }, () => ({
-      wch: 9,
-    })),
+    ...Array.from(
+      {
+        length:
+          ganttColumnCount,
+      },
+      () => ({
+        wch: 9,
+      })
+    ),
+
   ];
 
+
   // ============================================================
-  // 14. 列高
+  // 15. 列高
   // ============================================================
 
   ws['!rows'] = [
+
     {
       hpt: 24,
     },
+
     {
       hpt: 22,
     },
 
-    ...dataRows.map(() => ({
-      hpt: 24,
-    })),
+    ...dataRows.map(
+      () => ({
+        hpt: 24,
+      })
+    ),
+
   ];
 
+
   // ============================================================
-  // 15. 凍結
-  //
-  // 左邊固定 A:F
-  // 上面固定兩列
+  // 16. 凍結
   // ============================================================
 
   ws['!freeze'] = {
+
     xSplit: 6,
+
     ySplit: 2,
+
   };
 
+
   // ============================================================
-  // 16. Workbook
+  // 17. 建立 Excel
   // ============================================================
 
-  const workbook = XLSX.utils.book_new();
+  const workbook =
+    XLSX.utils.book_new();
 
-  XLSX.utils.book_append_sheet(workbook, ws, '全部專案甘特');
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    ws,
+    '全部專案甘特'
+  );
+
 
   const fileName =
     selectedId === undefined ||
     selectedId === null ||
     selectedId === '' ||
     selectedId === 'all'
+
       ? '全部專案甘特圖.xlsx'
+
       : `${exportProjects[0]?.name || '專案'}_甘特圖.xlsx`;
 
-  saveWorkbook(workbook, fileName);
+
+  saveWorkbook(
+    workbook,
+    fileName
+  );
 }
 
 // ============================================================
@@ -3136,6 +3550,7 @@ onMounted(() => {
   loadWeeklyReports();
   loadGanttTasks();
   loadGanttTemplates();
+  loadLinks();
 });
 
 defineExpose({

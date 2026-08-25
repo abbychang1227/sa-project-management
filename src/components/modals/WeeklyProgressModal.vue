@@ -33,21 +33,19 @@ const emit = defineEmits([
 // ============================================================
 
 const weekOptions = computed(() => {
-  const currentWeek =
-    Number(
-      String(form.value.week || '')
-        .replace(/\D/g, '')
-    ) || 35
 
-  return [
-    currentWeek - 2,
-    currentWeek - 1,
-    currentWeek,
-    currentWeek + 1,
-    currentWeek + 2,
-  ]
-    .filter(week => week > 0)
-    .map(week => `W${week}`)
+const currentWeek =
+  Number(baseWeek.value) || 35
+
+return [
+  currentWeek - 2,
+  currentWeek - 1,
+  currentWeek,
+  currentWeek + 1,
+  currentWeek + 2,
+]
+  .filter(week => week > 0)
+  .map(week => `W${week}`)
 })
 
 
@@ -101,6 +99,15 @@ const form = ref({
   notes: '',
 })
 
+
+// ============================================================
+// 目前正在編輯的週次
+// ============================================================
+
+const previousWeek = ref('')
+
+// 開啟時固定的週次中心
+const baseWeek = ref(35)
 
 // ============================================================
 // 是否編輯
@@ -344,104 +351,40 @@ function getWeekDates(weekNumber) {
   }
 }
 // ============================================================
-// 切換週次
+// 週次暫存
 // ============================================================
 
-function changeWeek() {
-  const selectedWeek = form.value.week
-
-  console.log('切換週次:', selectedWeek)
-console.log('目前專案:', props.form.projectId)
-console.log('所有週報:', props.reports)
+// 尚未儲存、但已經在畫面上填寫過的週次
+// 例如 W35 填了一些 → 切 W36 → W35 的內容會暫存在這裡
+const weekDrafts = ref({})
 
 
-  // 找目前專案的該週週報
-  const report = props.reports.find(report => {
-    return (
-      String(report.projectId) ===
-        String(props.form.projectId) &&
-      String(report.week) ===
-        String(selectedWeek)
-    )
-  })
+// ============================================================
+// 建立指定週次的空白表單
+// ============================================================
 
-  if (report) {
-    // 該週已有資料 → 載入該週
-    loadForm(report)
-    return
-  }
-
-  // 該週沒有資料 → 建立新的空白表單
-  const weekNumber =
-    Number(
-      String(selectedWeek)
-        .replace(/\D/g, '')
-    )
-
-  const dates = getWeekDates(
-    weekNumber
-  )
-
-  function changeWeek() {
-  const selectedWeek = form.value.week
-
-  const report = props.reports.find(report => {
-    return (
-      String(report.projectId) ===
-        String(props.form.projectId) &&
-      String(report.week) ===
-        String(selectedWeek)
-    )
-  })
-
-  if (report) {
-    loadForm(report)
-    return
-  }
+function createEmptyWeekForm(selectedWeek) {
 
   const weekNumber =
     Number(
       String(selectedWeek)
         .replace(/\D/g, '')
+    ) || 35
+
+  const dates =
+    getWeekDates(
+      weekNumber
     )
 
-  const dates = getWeekDates(weekNumber)
+  return {
 
-  form.value = {
     id: null,
 
     projectId:
       props.form.projectId ?? null,
 
-    week: selectedWeek,
-
-    startDate: dates.startDate,
-    endDate: dates.endDate,
-
-    range:
-      `${dates.startDate} ~ ${dates.endDate}`,
-
-    lastWeekActual: '',
-    thisWeekPlan: '',
-
-    lastWeekWorks:
-      createDefaultWorks(),
-
-    thisWeekWorks:
-      createDefaultWorks(),
-
-    todo: '',
-    notes: '',
-  }
-}
-
-  form.value = {
-    id: null,
-
-    projectId:
-      props.form.projectId ?? null,
-
-    week: selectedWeek,
+    week:
+      selectedWeek,
 
     startDate:
       dates.startDate,
@@ -453,6 +396,7 @@ console.log('所有週報:', props.reports)
       `${dates.startDate} ~ ${dates.endDate}`,
 
     lastWeekActual: '',
+
     thisWeekPlan: '',
 
     lastWeekWorks:
@@ -462,10 +406,217 @@ console.log('所有週報:', props.reports)
       createDefaultWorks(),
 
     todo: '',
+
     notes: '',
   }
 }
 
+
+// ============================================================
+// 複製目前表單
+// ============================================================
+
+function cloneForm(source) {
+
+  return JSON.parse(
+    JSON.stringify(source)
+  )
+
+}
+
+
+// ============================================================
+// 取得指定週次的既有週報
+// ============================================================
+
+function findReportByWeek(selectedWeek) {
+
+  return props.reports.find(report => {
+
+    return (
+
+      String(report.projectId) ===
+        String(props.form.projectId)
+
+      &&
+
+      String(report.week) ===
+        String(selectedWeek)
+
+    )
+
+  }) || null
+
+}
+
+
+// ============================================================
+// 切換週次
+// ============================================================
+
+function changeWeek() {
+
+const selectedWeek =
+  form.value.week
+
+if (!selectedWeek) {
+  return
+}
+
+
+// ----------------------------------------------------------
+// 先保存「切換前」的週次
+// ----------------------------------------------------------
+
+const oldWeek =
+  previousWeek.value
+
+
+// ----------------------------------------------------------
+// W35 → W36
+//
+// 先把 W35 目前畫面上的內容暫存起來
+// ----------------------------------------------------------
+
+if (
+  oldWeek &&
+  oldWeek !== selectedWeek
+) {
+
+  weekDrafts.value[oldWeek] =
+    cloneForm(
+      form.value
+    )
+
+}
+
+
+// ----------------------------------------------------------
+// 1. 先找尚未儲存的暫存內容
+// ----------------------------------------------------------
+
+const draft =
+  weekDrafts.value[selectedWeek]
+
+if (draft) {
+
+  form.value =
+    cloneForm(draft)
+
+  previousWeek.value =
+    selectedWeek
+
+  return
+}
+
+
+// ----------------------------------------------------------
+// 2. 再找資料庫已經存在的週報
+// ----------------------------------------------------------
+
+const report =
+  findReportByWeek(
+    selectedWeek
+  )
+
+if (report) {
+
+  loadForm(report)
+
+  previousWeek.value =
+    selectedWeek
+
+  return
+}
+
+
+// ----------------------------------------------------------
+// 3. 都沒有 → 建立新的空白週報
+// ----------------------------------------------------------
+
+form.value =
+  createEmptyWeekForm(
+    selectedWeek
+  )
+
+previousWeek.value =
+  selectedWeek
+}
+
+// ============================================================
+// 第一次開啟 Modal
+// ============================================================
+
+function initializeWeek() {
+
+// ----------------------------------------------------------
+// 決定第一次開啟的週次
+// ----------------------------------------------------------
+
+const initialWeek =
+  props.form.week ||
+  'W35'
+
+
+// ----------------------------------------------------------
+// 設定週次選單中心
+// ----------------------------------------------------------
+
+const initialWeekNumber =
+  Number(
+    String(initialWeek)
+      .replace(/\D/g, '')
+  ) || 35
+
+baseWeek.value =
+  initialWeekNumber
+
+
+// ----------------------------------------------------------
+// 設定目前週次
+// ----------------------------------------------------------
+
+previousWeek.value =
+  initialWeek
+
+
+// ----------------------------------------------------------
+// 清除上一次開啟留下的暫存
+// ----------------------------------------------------------
+
+weekDrafts.value = {}
+
+
+// ----------------------------------------------------------
+// 先找資料庫是否已有這一週
+// ----------------------------------------------------------
+
+const report =
+  findReportByWeek(
+    initialWeek
+  )
+
+
+if (report) {
+
+  loadForm(report)
+
+  previousWeek.value =
+    initialWeek
+
+  return
+}
+
+
+// ----------------------------------------------------------
+// 沒有資料 → 建立空白表單
+// ----------------------------------------------------------
+
+form.value =
+  createEmptyWeekForm(
+    initialWeek
+  )
+}
 
 // ============================================================
 // Modal 開啟
@@ -478,9 +629,7 @@ watch(
 
     if (visible) {
 
-      loadForm(
-        props.form
-      )
+      initializeWeek()
 
     }
 
@@ -492,29 +641,6 @@ watch(
 )
 
 
-// ============================================================
-// 外部表單變更
-// ============================================================
-
-watch(
-  () => props.form,
-
-  source => {
-
-    if (props.visible) {
-
-      loadForm(
-        source
-      )
-
-    }
-
-  },
-
-  {
-    deep: true,
-  }
-)
 
 
 // ============================================================
@@ -882,15 +1008,14 @@ function close() {
                     工作事項
                   </label>
 
-                  <input
-                    v-model="
-                      work.description
-                    "
-                    type="text"
-                    class="work-input"
-                    placeholder="請輸入本項工作事項"
-                  />
-
+                  <textarea
+  v-model="
+    work.description
+  "
+  class="work-input"
+  placeholder="請輸入本項工作事項"
+  rows="2"
+></textarea>
                 </div>
 
 
@@ -1002,14 +1127,14 @@ function close() {
                     工作事項
                   </label>
 
-                  <input
-                    v-model="
-                      work.description
-                    "
-                    type="text"
-                    class="work-input"
-                    placeholder="請輸入本週預計工作"
-                  />
+                  <textarea
+  v-model="
+    work.description
+  "
+  class="work-input"
+  placeholder="請輸入本週預計工作"
+  rows="2"
+></textarea>
 
                 </div>
 
@@ -1392,9 +1517,7 @@ function close() {
     245px
     34px;
 
-  align-items: center;
-
-  column-gap: 16px;
+  align-items: start;
 
   min-height: 92px;
 
@@ -1404,6 +1527,8 @@ function close() {
 
   border: 1px solid var(--pm-border);
   border-radius: 10px;
+
+  column-gap: 16px;
 }
 
 .work-number {
@@ -1444,27 +1569,37 @@ function close() {
   line-height: 1.3;
 }
 
-.work-input,
-.work-select {
+/* =========================================================
+   工作事項輸入框
+   改為支援多行文字
+========================================================= */
+
+.work-input {
   width: 100%;
 
   box-sizing: border-box;
 
-  height: 42px;
+  min-height: 42px;
 
   border: 1px solid var(--pm-border);
   border-radius: 8px;
 
-  padding: 8px 12px;
+  padding: 9px 12px;
 
   background: #fff;
   color: var(--pm-text);
 
   font-size: 16px;
 
-  line-height: 1.4;
+  line-height: 1.5;
 
   outline: none;
+
+  resize: vertical;
+
+  font-family: inherit;
+
+  overflow-y: auto;
 }
 
 .work-input::placeholder {
@@ -1485,6 +1620,36 @@ function close() {
       0.08
     );
 }
+
+/* =========================================================
+   甘特下拉
+========================================================= */
+
+.work-select {
+  width: 100%;
+
+  box-sizing: border-box;
+
+  min-height: 42px;
+
+  border: 1px solid var(--pm-border);
+  border-radius: 8px;
+
+  padding: 8px 12px;
+
+  background: #fff;
+  color: var(--pm-text);
+
+  font-size: 16px;
+
+  line-height: 1.4;
+
+  outline: none;
+}
+
+/* =========================================================
+   刪除工作事項
+========================================================= */
 
 .remove-btn {
   width: 32px;
@@ -1515,6 +1680,10 @@ function close() {
     var(--pm-danger);
 }
 
+/* =========================================================
+   新增工作事項
+========================================================= */
+
 .add-work-btn {
   margin-top: 10px;
 
@@ -1539,6 +1708,10 @@ function close() {
   border-color:
     var(--pm-primary);
 }
+
+/* =========================================================
+   Modal Footer
+========================================================= */
 
 .modal-footer {
   flex-shrink: 0;
@@ -1595,6 +1768,10 @@ function close() {
     var(--pm-primary-dark);
 }
 
+/* =========================================================
+   Scrollbar
+========================================================= */
+
 .modal-body::-webkit-scrollbar {
   width: 8px;
 }
@@ -1607,6 +1784,10 @@ function close() {
   background: #c5d0d5;
   border-radius: 10px;
 }
+
+/* =========================================================
+   RWD
+========================================================= */
 
 @media (max-width: 850px) {
 
@@ -1641,6 +1822,8 @@ function close() {
       32px
       minmax(0, 1fr)
       34px;
+
+    align-items: start;
 
     row-gap: 12px;
 
