@@ -148,6 +148,27 @@ async function loadWeeklyReports() {
   console.log('Supabase 週報載入完成:', reports.value);
 }
 
+async function loadLinks() {
+  const { data, error } = await supabase
+    .from('project_links')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('載入雲端資料失敗：', error);
+    return;
+  }
+
+  links.value = (data || []).map((link) => ({
+    id: link.id,
+    projectId: link.project_id,
+    name: link.name,
+    url: link.url,
+  }));
+
+  console.log('Supabase 雲端資料載入完成：', links.value);
+}
+
 
 
 // ============================================================
