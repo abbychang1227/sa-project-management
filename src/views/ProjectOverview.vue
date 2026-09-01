@@ -52,6 +52,22 @@ const customers = computed(() => [
 
 
 // ============================================================
+// SA
+// ============================================================
+
+const sas = computed(() => [
+  ...new Set(
+    props.projects
+      .flatMap(project =>
+        String(project.sa || '')
+          .split(',')
+          .map(sa => sa.trim())
+          .filter(Boolean)
+      )
+  ),
+])
+
+// ============================================================
 // 篩選
 // ============================================================
 
@@ -80,9 +96,12 @@ const filteredProjects = computed(() =>
       ) &&
 
       (
-        saFilter.value === '全部 SA' ||
-        project.sa === saFilter.value
-      ) &&
+  saFilter.value === '全部 SA' ||
+  String(project.sa || '')
+    .split(',')
+    .map(sa => sa.trim())
+    .includes(saFilter.value)
+) &&
 
       (
         customerFilter.value === '全部客戶' ||
@@ -393,12 +412,13 @@ defineExpose({
     ========================== -->
 
     <ProjectFilters
-      v-model:search="search"
-      v-model:statusFilter="statusFilter"
-      v-model:saFilter="saFilter"
-      v-model:customerFilter="customerFilter"
-      :customers="customers"
-    />
+  v-model:search="search"
+  v-model:statusFilter="statusFilter"
+  v-model:saFilter="saFilter"
+  v-model:customerFilter="customerFilter"
+  :customers="customers"
+  :sas="sas"
+/>
 
     <!-- =========================
          專案控管表

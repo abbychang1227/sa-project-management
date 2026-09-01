@@ -128,6 +128,12 @@ function normalizeWorks(
   oldTaskIds
 ) {
 
+  console.log('===== normalizeWorks =====');
+  console.log('sourceWorks:', sourceWorks);
+  console.log('oldDescription:', oldDescription);
+  console.log('oldTaskIds:', oldTaskIds);
+
+
   // ----------------------------------------------------------
   // 新格式
   // ----------------------------------------------------------

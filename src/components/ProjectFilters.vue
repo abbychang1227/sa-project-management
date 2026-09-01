@@ -1,7 +1,20 @@
 
 <script setup>
-defineProps({ search: String, statusFilter: String, saFilter: String, customerFilter: String, customers: Array })
-const emit = defineEmits(['update:search','update:statusFilter','update:saFilter','update:customerFilter'])
+defineProps({
+  search: String,
+  statusFilter: String,
+  saFilter: String,
+  customerFilter: String,
+  customers: Array,
+  sas: Array,
+})
+
+const emit = defineEmits([
+  'update:search',
+  'update:statusFilter',
+  'update:saFilter',
+  'update:customerFilter',
+])
 </script>
 
 <template>
@@ -20,11 +33,20 @@ const emit = defineEmits(['update:search','update:statusFilter','update:saFilter
 <option value="暫緩">暫緩</option>
     </select>
 
-    <select :value="saFilter" @change="emit('update:saFilter', $event.target.value)">
-      <option>全部 SA</option>
-      <option>Amy</option>
-      <option>John</option>
-    </select>
+    <select
+  :value="saFilter"
+  @change="emit('update:saFilter', $event.target.value)"
+>
+  <option value="全部 SA">全部 SA</option>
+
+  <option
+    v-for="sa in sas"
+    :key="sa"
+    :value="sa"
+  >
+    {{ sa }}
+  </option>
+</select>
 
     <select :value="customerFilter" @change="emit('update:customerFilter', $event.target.value)">
       <option>全部客戶</option>

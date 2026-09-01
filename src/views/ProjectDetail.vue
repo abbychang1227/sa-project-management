@@ -284,8 +284,15 @@ function createWorkItem() {
 // ============================================================
 
 function openWeeklyEdit(report) {
+
+
+
   weeklyForm.value = {
     id: report.id,
+
+    projectId: report.projectId,
+    
+
 
     week: report.week || '',
 
