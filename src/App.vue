@@ -400,7 +400,23 @@ function statusType(status) {
   return status === '暫緩' ? 'paused' : 'normal';
 }
 
+function handleProjectSave(payload) {
+  console.log('========== 父層收到 save ==========');
+  console.log('payload:', payload);
+  console.log('editing:', editingProject.value);
+
+  saveProject({
+    form: payload.form,
+    editing: payload.editing,
+  });
+}
+
 async function saveProject(payload) {
+
+  console.log('========== saveProject 被呼叫 ==========');
+  console.log('payload:', payload);
+  console.log('form:', payload?.form);
+  console.log('editing:', payload?.editing);
   const form = payload.form;
 
   if (!form.name || !form.name.trim()) {
@@ -3609,6 +3625,7 @@ defineExpose({
   :tasks="tasks"
   @open="openProject"
   @export="exportProjectExcel"
+  @save="saveProject"
 />
 
       <!-- 全部專案甘特 -->
@@ -3662,17 +3679,17 @@ defineExpose({
 
     <!-- 專案新增／編輯 -->
     <ProjectFormModal
-      :visible="showProjectModal"
-      :form="projectForm"
-      :editing="editingProject"
-      @close="showProjectModal = false"
-      @save="
-        saveProject({
-          form: projectForm,
-          editing: editingProject,
-        })
-      "
-    />
+  :visible="showProjectModal"
+  :form="projectForm"
+  :editing="editingProject"
+  @close="showProjectModal = false"
+  @save="
+    saveProject({
+      form: projectForm,
+      editing: editingProject,
+    })
+  "
+/>
   </div>
 </template>
 

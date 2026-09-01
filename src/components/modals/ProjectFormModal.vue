@@ -130,7 +130,14 @@ function setThisValue(index, value) {
 // ============================================================
 
 function save() {
-  emit('save');
+  console.log('ProjectFormModal save 被觸發');
+
+  emit('save', {
+    form: {
+      ...props.form,
+    },
+    editing: props.editing,
+  });
 }
 
 function handleBackdropClick() {
